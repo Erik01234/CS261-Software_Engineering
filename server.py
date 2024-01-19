@@ -1,10 +1,3 @@
-#flask run in terminal
-#to install with pip (on windows)
-    #pip install Flask
-    #pip install Flask-Mail
-    #pip install SQLAlchemy
-    
-
 import os
 from flask import Flask, request, redirect, render_template, url_for, session
 app = Flask(__name__)
