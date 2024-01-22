@@ -1,4 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash
+from werkzeug.security import check_password_hash
 
 db = SQLAlchemy()
 
@@ -17,5 +19,26 @@ class Users(db.Model):
         self.isactivated = isactivated
 
 def dbinit():
-    db.session.add(Users("1234", "1234", "1", 1))
+        #Tasneem - Tasneem
+        #Danyal - Danyal
+        #Rachel - Rachel
+        #Michael - Michael
+        #Marios - Marios
+    pwderik = generate_password_hash("erikpwd")
+    pwdtasneem = generate_password_hash("Tasneem")
+    pwddanyal = generate_password_hash("Danyal")
+    pwdrachel = generate_password_hash("Rachel")
+    pwdmichael = generate_password_hash("Michael")
+    pwdmarios = generate_password_hash("Marios")
+    pwdadmin = generate_password_hash("admin")
+    user_list = [
+        Users("rikifekete2003@gmail.com",pwderik,"x",1),
+        Users("Tasneem", pwdtasneem, "x", 1),
+        Users("Danyal", pwddanyal, "x", 1),
+        Users("Rachel", pwdrachel, "x", 1),
+        Users("Michael", pwdmichael, "x", 1),
+        Users("Marios", pwdmarios, "x", 1),
+        Users("admin", pwdadmin, "x", 0) #testing purposes
+        ]
+    db.session.add_all(user_list)
     db.session.commit()

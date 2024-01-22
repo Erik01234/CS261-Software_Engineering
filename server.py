@@ -1,3 +1,12 @@
+#"flask run" in terminal
+#I have some basic email (username) and password pairs, so you don't have to mess around with tsting the signup verification (me and Rachel will handle it):
+    #Tasneem - Tasneem
+    #Danyal - Danyal
+    #Rachel - Rachel
+    #Michael - Michael
+    #Marios - Marios
+    #rikifekete2003@gmail.com - erikpwd (mine)
+
 import os
 from flask import Flask, request, redirect, render_template, url_for, session
 app = Flask(__name__)
@@ -12,27 +21,38 @@ from itsdangerous import URLSafeTimedSerializer
 from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
 
-from flask_sqlalchemy import SQLAlchemy
-db = SQLAlchemy()
 
-mail = Mail(app)
+from schema import db, dbinit, Users
+
+from flask_sqlalchemy import SQLAlchemy
+
+
 srializer = URLSafeTimedSerializer('xyz567')
+
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30) #session is going to terminate after 30 minutes
 
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USE_SSL'] = False
+app.config['MAIL_USERNAME'] = 'rikifekete203@gmail.com'
+app.config['MAIL_PASSWORD'] = 'mypassword'
 
-from schema import db, dbinit, Users
+
+
+mail = Mail(app)
 
 db.init_app(app)
 
-resetdb = False
+resetdb = True
 if resetdb:
     with app.app_context():
         db.drop_all()
         db.create_all()
-        #dbinit() - inside the schema
+        dbinit()
 
 @app.route('/')
 def home():
@@ -42,30 +62,56 @@ def home():
     else:
         return redirect('/login')
 
-@app.route('/login', methods=['POST', 'GET'])
+@app.route('/login')
+def loginpage():
+    if 'username' in session:
+        return redirect('/')
+    return render_template('login.html')
+
+@app.route('/submitlogin', methods=['POST', 'GET'])
 def login():
     
     if request.method == 'POST':
-        passwd = request.form.get("email")
-        passwd = escape(passwd)
-        email = request.form.get("password")
+        email = request.form.get("email")
         email = escape(email)
+        passwd = request.form.get("password")
+        passwd = escape(passwd)
         session["username"] = email
         users = Users.query.filter_by(email=email).first()
-        useractivated = Users.query.filter_by(email=email).first().isactivated
+        #useractivated = Users.query.filter_by(email=email).first().isactivated
         if users == None:
+            
+            try:
+              del session['username']
+            except KeyError:
+                pass
+            session.pop('username', None)
+            session.clear()
+
             return "Incorrect email. Try again!"
-        if not security.check_password_hash(users.password, passwd):
+        useractivated = users.isactivated
+        if not security.check_password_hash(users.hashed_password, passwd): 
+            try:
+              del session['username']
+            except KeyError:
+                pass
+            session.pop('username', None)
+            session.clear()
             return "Incorrect password. Try again!"
         else:
             if useractivated == 0:
               token = srializer.dumps(email, salt='email-confirm')
-              msg = Message('Confirm Email', sender='rikifekete2003@gmail.com', recipients=[email])
+              msg = Message('Confirm Email', sender='rikifekete203@gmail.com', recipients=[email])
               link = url_for('confirmemail', token=token, external=True)
               msg.body = 'Your link is {}'.format(link)
               mail.send(msg)
               users.temptoken = token
-              db.session.commit()
+              try:
+                del session['username']
+              except KeyError:
+                pass
+              session.pop('username', None)
+              session.clear()
               return '<p>Your account is not activated. Another email was sent to you to verify your address</p><br /><p>The email you entered is {}. The token is {}</p><br /><p>Activate your account in an hour. If you cant, you can receive a new confirmation email on a login attempt</p>'.format(email, token)
             elif useractivated == 1:
               return redirect('/')
@@ -83,7 +129,7 @@ def logout():
 @app.route('/signup')
 def signup():
     if 'username' in session:
-        return redirect('/login') #if it is in session, login will redirect them to main page, so no need to change in 2 places if modifying
+        return redirect('/') #if it is in session, login will redirect them to main page, so no need to change in 2 places if modifying
     else:
         return render_template('signup.html')
     
@@ -106,11 +152,9 @@ def submitsignup():
     regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
     def check(usernm):
         if(re.fullmatch(regex, usernm)):
-            isvalid = 1
             return True
         else:
             return False
-            print("Invalid email")
     
     check(usernm)
 
@@ -123,12 +167,13 @@ def submitsignup():
                     ]
                     db.session.add_all(all_users)
                     db.session.commit()
-                    session["user"] = usernm
-                    msg = Message('Confirm Email', sender='rikifekete2003@gmail.com', recipients=[usernm])
+                    print("---------------------Successfully added to the database!!!----------------------")
+                    msg = Message('Confirm Email', sender='rikifekete203@gmail.com', recipients=[usernm])
                     link = url_for('confirmemail', token=token, external=True)
                     urlbeginning = request.base_url
                     urlnew = urlbeginning+link
-                    urlnew = urlnew.replace("/addregister", "")
+                    urlnew = urlnew.replace("/submitsignup", "")
+                    print("URL to receive by person signing up is: "+urlnew)
                     msg.body = 'Your link is {}'.format(urlnew)
                     mail.send(msg)
                     return '<p>The email you entered is {}. </p><br /><p>Activate your account in an hour. If you cant, you can receive a new confirmation email on a login attempt</p>'.format(usernm)
