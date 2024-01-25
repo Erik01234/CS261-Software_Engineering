@@ -20,31 +20,15 @@ import re #for the signup page
 from itsdangerous import URLSafeTimedSerializer
 from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
-
-
+import yagmail 
 from schema import db, dbinit, Users
-
 from flask_sqlalchemy import SQLAlchemy
-
-
 srializer = URLSafeTimedSerializer('xyz567')
-
-
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30) #session is going to terminate after 30 minutes
-
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USE_SSL'] = False
-app.config['MAIL_USERNAME'] = 'rikifekete203@gmail.com'
-app.config['MAIL_PASSWORD'] = 'mypassword'
-
-
-
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30) 
+#session is going to terminate after 30 minutes
 mail = Mail(app)
-
 db.init_app(app)
 
 resetdb = True
@@ -53,6 +37,14 @@ if resetdb:
         db.drop_all()
         db.create_all()
         dbinit()
+
+with open('smtp_credentials.txt', 'r') as file:
+    app_pwd = file.read() 
+    #app specific password, not my actual gmail password
+
+gmail_user = "rikifekete2003@gmail.com"
+gmail_password = app_pwd 
+yag = yagmail.SMTP(gmail_user, gmail_password, host="smtp.gmail.com")
 
 @app.route('/')
 def home():
@@ -78,7 +70,6 @@ def login():
         passwd = escape(passwd)
         session["username"] = email
         users = Users.query.filter_by(email=email).first()
-        #useractivated = Users.query.filter_by(email=email).first().isactivated
         if users == None:
             
             try:
@@ -101,11 +92,17 @@ def login():
         else:
             if useractivated == 0:
               token = srializer.dumps(email, salt='email-confirm')
-              msg = Message('Confirm Email', sender='rikifekete203@gmail.com', recipients=[email])
               link = url_for('confirmemail', token=token, external=True)
-              msg.body = 'Your link is {}'.format(link)
-              mail.send(msg)
+              urlbeginning = request.base_url
+              urlnew = urlbeginning+link
+              urlnew = urlnew.replace("/submitlogin", "")
+              #print("URL to receive by person signing up is: "+urlnew)
+              msgbody = 'Your new verification link is {}'.format(urlnew)
+              message = f"Subject: Email verification\n\n{msgbody}"
+              yag.send(to=email, contents=[message])
               users.temptoken = token
+              db.session.commit()
+
               try:
                 del session['username']
               except KeyError:
@@ -167,15 +164,15 @@ def submitsignup():
                     ]
                     db.session.add_all(all_users)
                     db.session.commit()
-                    print("---------------------Successfully added to the database!!!----------------------")
-                    msg = Message('Confirm Email', sender='rikifekete203@gmail.com', recipients=[usernm])
                     link = url_for('confirmemail', token=token, external=True)
                     urlbeginning = request.base_url
                     urlnew = urlbeginning+link
                     urlnew = urlnew.replace("/submitsignup", "")
-                    print("URL to receive by person signing up is: "+urlnew)
-                    msg.body = 'Your link is {}'.format(urlnew)
-                    mail.send(msg)
+                    #print("URL to receive by person signing up is: "+urlnew)
+                    msgbody = 'Your verification link is {}'.format(urlnew)
+                    message = f"Subject: Email verification\n\n{msgbody}"
+                    yag.send(to=usernm, contents=[message])
+
                     return '<p>The email you entered is {}. </p><br /><p>Activate your account in an hour. If you cant, you can receive a new confirmation email on a login attempt</p>'.format(usernm)
                 else:
                     return "Passwords should match. Try again!"
