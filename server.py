@@ -109,7 +109,7 @@ def login():
                 pass
               session.pop('username', None)
               session.clear()
-              return '<p>Your account is not activated. Another email was sent to you to verify your address</p><br /><p>The email you entered is {}. The token is {}</p><br /><p>Activate your account in an hour. If you cant, you can receive a new confirmation email on a login attempt</p>'.format(email, token)
+              return '<p>Your account is not activated. Another email was sent to you to verify your address</p><br /><p>The email you entered is {}<br /><p>Activate your account in an hour. If you cant, you can receive a new confirmation email on a login attempt</p><br /><form action="/login"><input type="submit" value="Return"></form>'.format(email)
             elif useractivated == 1:
               return redirect('/')
 
@@ -173,7 +173,7 @@ def submitsignup():
                     message = f"Subject: Email verification\n\n{msgbody}"
                     yag.send(to=usernm, contents=[message])
 
-                    return '<p>The email you entered is {}. </p><br /><p>Activate your account in an hour. If you cant, you can receive a new confirmation email on a login attempt</p>'.format(usernm)
+                    return '<div align="center"><p>The email you entered is {}. </p><p>Activate your account in an hour. If you cant, you can receive a new confirmation email on a login attempt.</p><form action="/login"><input type="submit" value="Return"></form></div>'.format(usernm)
                 else:
                     return "Passwords should match. Try again!"
             else:
