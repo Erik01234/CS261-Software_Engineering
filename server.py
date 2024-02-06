@@ -187,23 +187,3 @@ def confirmemail(token):
   users.isactivated = 1
   db.session.commit()
   return '<p>Yay, {}, you have just activated your email!</p><form action="/"><input type="submit" value="Return to login"></form>'.format(email)
-
-'''
-
-cntinue as gest button on login page 
-
-database schema?
-    we get the API data using JSON
-        stores all relevant information about an article 
-            extract the data
-            store the data - WHICH?
-
-what data to retrieve
-    on the alphavantage website (companies, cryptocurrencies, ...)
-
-either by company
-    now it retrieves any company overview (randomly) using its name
-or by news
-    rtrieves a random artice about a company from a (trusted) news site
-
-'''
