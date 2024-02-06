@@ -18,6 +18,31 @@ class Users(db.Model):
         self.token = token
         self.isactivated = isactivated
 
+class Company(db.Model):
+    #will fill this up with those 500 companies that we are going to track 
+    __tablename__ = 'company'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.Text())
+        # is the 1/2/3/4 letter code of the company that is on the stock market - CAN ALSO BE THE PRIMARY KEY, since it is uniique
+
+    def __init__(self, name):
+        self.name = name
+
+class UserCompany(db.Model): 
+    #stores which users are following which company - a simple pairing
+    __tablename__ = 'usercompany'
+    id = db.Column(db.Integer, primary_key=True)
+    user = db.Column(db.Text())
+    company = db.Column(db.Text())
+
+    def __init__(self, user, company):
+        self.user = user
+        self.company = company
+
+class News(db.Model):
+    #stores news, need to figure out the columns here (WHAT we want to store about the news) - important part
+    __tablename__ = 'news'
+
 def dbinit():
         #Tasneem - Tasneem
         #Danyal - Danyal
