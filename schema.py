@@ -1,7 +1,9 @@
+from sqlalchemy import create_engine, Column, Time
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, Time
+import datetime
 
 db = SQLAlchemy()
 
@@ -90,18 +92,59 @@ class ArticleTickers(db.Model):
         self.relevanceScore = relevanceScore
         self.sentimentScore = sentimentScore
 
-class TopGainersLosers(db.Model):
-    __tablename__ = 'topgainerslosers'
-    id = db.Column(db.Integer, primary_key=True)
-    tickerID = db.Column(db.Integer, db.ForeignKey('company.ticker'))
-    gainerLoserScore = db.Column(db.Float(precision=25))
+class TopGainers(db.Model):
+    __tablename__ = 'topgainers'
+    ticker = db.Column(db.String(10), primary_key=True)
+    price = db.Column(db.Float(precision=6))
+    change = db.Column(db.Float(precision=6))
+    changePercent = db.Column(db.Float(precision=6))
+    volume = db.Column(db.Float)
 
-    def __init__(self, companyID, gainerLoserScore):
-        self.companyID = companyID
-        self.gainerLoserScore = gainerLoserScore
-        #as I see, top gainers and top losers is one list, combining 1) metadata, 2) last updated, 3) top gainers, 4) top losers, 5) most actively traded
-        #got to break up the list, arrange them in order (if not in it already) (desc for gainers, asc for losers), and select which of these 5 we need 
-        #+ attribute names (i.e., for what values)? What do we store from these? Auxiliary columns (like 1 for gainer, 0 for loser)?
+    def __init__(self, price, change, changePercent, volume):
+        self.price = price
+        self.change = change
+        self.changePercent = changePercent
+        self.volume = volume
+
+class TopLosers(db.Model):
+    __tablename__ = 'toplosers'
+    ticker = db.Column(db.String(10), primary_key=True)
+    price = db.Column(db.Float(precision=6))
+    change = db.Column(db.Float(precision=6))
+    changePercent = db.Column(db.Float(precision=6))
+    volume = db.Column(db.Float)
+
+    def __init__(self, price, change, changePercent, volume):
+        self.price = price
+        self.change = change
+        self.changePercent = changePercent
+        self.volume = volume
+
+
+class ActivelyTraded(db.Model):
+    __tablename__ = 'activelytraded'
+    ticker = db.Column(db.String(10), primary_key=True)
+    price = db.Column(db.Float(precision=6))
+    change = db.Column(db.Float(precision=6))
+    changePercent = db.Column(db.Float(precision=6))
+    volume = db.Column(db.Float)
+
+    def __init__(self, price, change, changePercent, volume):
+        self.price = price
+        self.change = change
+        self.changePercent = changePercent
+        self.volume = volume
+
+class GlobalMarket(db.Model):
+    __tablename__ = "globalmarket"
+    id = db.Column(db.Integer, primary_key=True)
+    type = db.Column(db.String(20))
+    region = db.Column(db.String(20))
+    exchanges = db.Column(db.String(20))
+    open = db.Column(db.Time)
+    close = db.Column(db.Time)
+    status = db.Column(db.String(10))
+    notes = db.Column(db.Text())
 
 
 def dbinit():
