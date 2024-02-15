@@ -4,8 +4,54 @@ from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
 from sqlalchemy import ForeignKey, Time
 import datetime
+import pandas as pd
 
 db = SQLAlchemy()
+
+import requests
+
+def get_static_company_info(ticker):
+    API_KEY = 'QC6PHJMTIZHC8S6B'  # Replace with your actual AlphaVantage API key
+    url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={API_KEY}'
+    
+    response = requests.get(url)
+    data = response.json()
+    
+    # Check if the response contains company information
+    if not data:
+        return 0
+
+    # Extract the static information
+    static_info = {
+        'Symbol': ticker,
+        'Name': data.get('Exchange'),
+        'Exchange': data.get('Exchange'),
+        'Currency': data.get('Currency'),
+        'Country': data.get('Country'),
+        'Address': data.get('Address'),
+        'Description': data.get('Description'),
+        'Sector': data.get('Sector'),
+        'Industry': data.get('Industry')
+    }
+
+    print(static_info)
+    
+    return static_info
+
+
+
+companies = pd.read_csv('SP_500.csv')
+
+tickers = companies['Symbol'].unique()
+
+
+
+
+
+
+
+#company_static_info["Symbol"]
+
 
 class Users(db.Model):
     __tablename__ = 'users'
@@ -25,23 +71,27 @@ class Users(db.Model):
 class Company(db.Model):
     #will fill this up with those 500 companies that we are going to track 
     __tablename__ = 'company'
-    ticker = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
+    ticker = db.Column(db.String)
     name = db.Column(db.Text())
     sector = db.Column(db.Text())
-    assetType = db.Column(db.String)
+    industry = db.Column(db.Text())
     exchange = db.Column(db.String)
     currency = db.Column(db.String)
     country = db.Column(db.String)
     address = db.Column(db.Text())
+    description = db.Column(db.Text())
 
-    def __init__(self, name, sector, assetType, exchange, currency, country, address):
+    def __init__(self, ticker, name, sector, industry, exchange, currency, country, address, description):
         self.name = name
+        self.ticker = ticker
         self.sector = sector
-        self.assetType = assetType
+        self.industry = industry
         self.exchange = exchange
         self.currency = currency
         self.country = country
         self.address = address
+        self.description = description
 
 class UserCompany(db.Model): 
     #stores which users are following which company - a simple pairing
@@ -167,7 +217,13 @@ def dbinit():
         Users("Rachel", pwdrachel, "x", 1),
         Users("Michael", pwdmichael, "x", 1),
         Users("Marios", pwdmarios, "x", 1),
-        Users("admin", pwdadmin, "x", 0) #testing purposes
+        Users("admin", pwdadmin, "x", 0),
+        #Company(ticker, company_statistic_info["Name"], company_statistic_info["Sector"], company_statistic_info["Industry"], company_statistic_info["Exchange"], company_statistic_info["Currency"], company_statistic_info["Country"], company_statistic_info["Address"], company_statistic_info["Description"])
         ]
     db.session.add_all(user_list)
     db.session.commit()
+    for tickerList in tickers:
+        company_statistic_info = get_static_company_info(tickerList)
+        if company_statistic_info != 0:
+            db.session.add(Company(tickerList, company_statistic_info["Name"], company_statistic_info["Sector"], company_statistic_info["Industry"], company_statistic_info["Exchange"], company_statistic_info["Currency"], company_statistic_info["Country"], company_statistic_info["Address"], company_statistic_info["Description"]))
+            db.session.commit()
