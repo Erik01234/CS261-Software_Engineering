@@ -21,7 +21,7 @@ from itsdangerous import URLSafeTimedSerializer
 from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
 import yagmail 
-from schema import db, dbinit, Users
+from schema import db, dbinit, Users, Company, companyInit
 from flask_sqlalchemy import SQLAlchemy
 srializer = URLSafeTimedSerializer('xyz567')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' 
@@ -31,12 +31,21 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 mail = Mail(app)
 db.init_app(app)
 
-resetdb = True
-if resetdb:
+resetwholedb = False
+if resetwholedb:
     with app.app_context():
         db.drop_all()
         db.create_all()
         dbinit()
+
+#if we only want to reset/refill individual tables with data...
+#have to definie a separate function in schema only containing the imports into that specific table only, and import it in this server file
+resetcompany = True
+if resetcompany:
+    with app.app_context():
+        db.metadata.drop_all(bind=db.engine, tables=[Company.__table__])
+        db.metadata.create_all(bind=db.engine, tables=[Company.__table__])
+        companyInit()
 
 with open('smtp_credentials.txt', 'r') as file:
     app_pwd = file.read() 

@@ -25,7 +25,7 @@ def get_static_company_info(ticker):
     # Extract the static information
     static_info = {
         'Symbol': ticker,
-        'Name': data.get('Exchange'),
+        'Name': data.get('Name'),
         'Exchange': data.get('Exchange'),
         'Currency': data.get('Currency'),
         'Country': data.get('Country'),
@@ -342,4 +342,13 @@ def dbinit():
             db.session.add(CurrentStockPrice(tickerStock, datetime.now(), stockPriceList["Current Price"], stockPriceList["Current Volume"]))
             db.session.commit()
     
-    
+    #notes, observations from insertion into DB
+        #Company table name doesn't contain the comapny name, but the stock exchange (NYSE or NASDAQ)
+        #so Company's name and exchange attribute has the same values!!!
+
+def companyInit():
+    for tickerList in tickers:
+        company_statistic_info = get_static_company_info(tickerList)
+        if company_statistic_info != 0:
+            db.session.add(Company(tickerList, company_statistic_info["Name"], company_statistic_info["Sector"], company_statistic_info["Industry"], company_statistic_info["Exchange"], company_statistic_info["Currency"], company_statistic_info["Country"], company_statistic_info["Address"], company_statistic_info["Description"]))
+            db.session.commit()
