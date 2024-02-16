@@ -4,6 +4,7 @@ from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
 from sqlalchemy import ForeignKey, Time
 import datetime
+from datetime import datetime
 import pandas as pd
 
 db = SQLAlchemy()
@@ -38,14 +39,74 @@ def get_static_company_info(ticker):
     
     return static_info
 
+def get_current_stock_price_and_volume(ticker):
+    API_KEY = 'QC6PHJMTIZHC8S6B'
+    url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={API_KEY}"
+    
+    response = requests.get(url)
+    data = response.json()
+    
+    if "Global Quote" in data:
+        global_quote = data["Global Quote"]
+        current_price = global_quote.get("05. price")
+        current_volume = global_quote.get("06. volume")
+
+        if current_price != None and current_volume != None:
+        
+            print({"Current Price": current_price, "Current Volume": current_volume})
+            return {
+                "Current Price": current_price,
+                "Current Volume": current_volume
+            }
+        else:
+            return 0
+    else:
+        return 0
+    
+
+def get_company_overview(ticker):
+    API_KEY = 'QC6PHJMTIZHC8S6B'  # Replace with your actual AlphaVantage API key
+    url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={API_KEY}'
+    
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an HTTPError if the HTTP request returned an unsuccessful status code
+        data = response.json()
+        
+        if 'Error Message' in data:
+            return 0
+        
+        # Extract the relevant information
+        overview_data = {
+            'MarketCapitalization': data.get('MarketCapitalization'),
+            'PERatio': data.get('PERatio'),
+            'EPS': data.get('EPS'),
+            'ROE': data.get('ReturnOnEquityTTM'),
+        }
+
+        
+
+        if overview_data["MarketCapitalization"] != None and overview_data["PERatio"] != None and overview_data["EPS"] != None and overview_data["ROE"] != None:
+            if overview_data["MarketCapitalization"] != "None" and overview_data["PERatio"] != "None" and overview_data["EPS"] != "None" and overview_data["ROE"] != "None":
+                print(overview_data)
+                return overview_data
+            else:
+                return 0
+        else:
+            return 0
+    
+    except requests.exceptions.HTTPError as http_err:
+        return f"HTTP error occurred: {http_err}"
+    except Exception as err:
+        return f"An error occurred: {err}"
+
+
+
 
 
 companies = pd.read_csv('SP_500.csv')
 
 tickers = companies['Symbol'].unique()
-
-
-
 
 
 
@@ -196,6 +257,47 @@ class GlobalMarket(db.Model):
     status = db.Column(db.String(10))
     notes = db.Column(db.Text())
 
+    def __init__(self, type, region, exchanges, open, close, status, notes):
+        self.type = type
+        self.region = region
+        self.exchanges = exchanges
+        self.open = open
+        self.close = close
+        self.status = status
+        self.notes = notes
+
+class FinancialData(db.Model):
+    __tablename__ = "financialdata"
+    id = db.Column(db.Integer, primary_key=True)
+    tickerID = db.Column(db.String, db.ForeignKey('company.ticker'))
+    date = db.Column(db.DateTime) # update once a day
+    marketCap = db.Column(db.Numeric) # market capitalisation
+    pe_ratio = db.Column(db.Numeric) # price to earnings ratio
+    eps = db.Column(db.Numeric) # earnings per share
+    roe = db.Column(db.Numeric) # return on equity
+
+    def __init__(self, tickerID, date, marketCap, pe_ratio, eps, roe):
+        self.marketCap = marketCap
+        self.tickerID = tickerID
+        self.pe_ratio = pe_ratio
+        self.eps = eps
+        self.roe = roe
+        self.date = date
+
+class CurrentStockPrice(db.Model):
+    __tablename__ = "currentstockprice"
+    id = db.Column(db.Integer, primary_key=True)
+    tickerID = db.Column(db.String, db.ForeignKey('company.ticker'))
+    timestamp = db.Column(db.DateTime) # update every 5 minutes
+    stockPrice = db.Column(db.Numeric)
+    volumeOfTrade = db.Column(db.Integer)
+
+    def __init__(self, tickerID, timestamp, stockPrice, volumeOfTrade):
+        self.stockPrice = stockPrice
+        self.volumeOfTrade = volumeOfTrade
+        self.tickerID = tickerID
+        self.timestamp = timestamp
+
 
 def dbinit():
         #Tasneem - Tasneem
@@ -227,3 +329,17 @@ def dbinit():
         if company_statistic_info != 0:
             db.session.add(Company(tickerList, company_statistic_info["Name"], company_statistic_info["Sector"], company_statistic_info["Industry"], company_statistic_info["Exchange"], company_statistic_info["Currency"], company_statistic_info["Country"], company_statistic_info["Address"], company_statistic_info["Description"]))
             db.session.commit()
+
+    for tickerOverview in tickers:
+        overview = get_company_overview(tickerOverview)
+        if overview != 0:
+            db.session.add(FinancialData(tickerOverview, datetime.now(), overview["MarketCapitalization"], overview["PERatio"], overview["EPS"], overview["ROE"]))
+            db.session.commit()
+    
+    for tickerStock in tickers:
+        stockPriceList = get_current_stock_price_and_volume(tickerStock)
+        if stockPriceList != 0:
+            db.session.add(CurrentStockPrice(tickerStock, datetime.now(), stockPriceList["Current Price"], stockPriceList["Current Volume"]))
+            db.session.commit()
+    
+    
