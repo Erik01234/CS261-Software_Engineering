@@ -21,8 +21,9 @@ from itsdangerous import URLSafeTimedSerializer
 from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
 import yagmail 
-from schema import db, dbinit, Users, Company, companyInit
+from schema import db, dbinit, Users
 from flask_sqlalchemy import SQLAlchemy
+from apscheduler.schedulers.background import BackgroundScheduler
 srializer = URLSafeTimedSerializer('xyz567')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -31,21 +32,25 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 mail = Mail(app)
 db.init_app(app)
 
-resetwholedb = False
+scheduler = BackgroundScheduler()
+scheduler.start()
+
+resetwholedb = True
 if resetwholedb:
     with app.app_context():
         db.drop_all()
         db.create_all()
         dbinit()
 
-#if we only want to reset/refill individual tables with data...
-#have to definie a separate function in schema only containing the imports into that specific table only, and import it in this server file
-resetcompany = True
-if resetcompany:
+'''if we only want to reset/refill individual tables with data...
+have to definie a separate function in schema only containing the imports into that specific table only, and import it in this server file
+resetmarket = False
+if resetmarket:
     with app.app_context():
-        db.metadata.drop_all(bind=db.engine, tables=[Company.__table__])
-        db.metadata.create_all(bind=db.engine, tables=[Company.__table__])
-        companyInit()
+        db.metadata.drop_all(bind=db.engine, tables=[GlobalMarket.__table__])
+        db.metadata.create_all(bind=db.engine, tables=[GlobalMarket.__table__])
+        globalMarketInit()
+'''
 
 with open('smtp_credentials.txt', 'r') as file:
     app_pwd = file.read() 
@@ -54,6 +59,14 @@ with open('smtp_credentials.txt', 'r') as file:
 gmail_user = "rikifekete2003@gmail.com"
 gmail_password = app_pwd 
 yag = yagmail.SMTP(gmail_user, gmail_password, host="smtp.gmail.com")
+
+
+def dbupdates():
+    #visualize changes once each is updated, so it is more clear for the user
+    print("Here we will define the updates on the database that will happen periodically to keep us up to date")
+
+#scheduler.add_job(dbupdates, 'interval', seconds=1)
+
 
 @app.route('/')
 def home():

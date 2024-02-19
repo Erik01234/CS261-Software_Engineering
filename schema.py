@@ -6,6 +6,8 @@ from sqlalchemy import ForeignKey, Time
 import datetime
 from datetime import datetime
 import pandas as pd
+import requests
+import json
 
 db = SQLAlchemy()
 
@@ -62,7 +64,6 @@ def get_current_stock_price_and_volume(ticker):
             return 0
     else:
         return 0
-    
 
 def get_company_overview(ticker):
     API_KEY = 'QC6PHJMTIZHC8S6B'  # Replace with your actual AlphaVantage API key
@@ -84,8 +85,6 @@ def get_company_overview(ticker):
             'ROE': data.get('ReturnOnEquityTTM'),
         }
 
-        
-
         if overview_data["MarketCapitalization"] != None and overview_data["PERatio"] != None and overview_data["EPS"] != None and overview_data["ROE"] != None:
             if overview_data["MarketCapitalization"] != "None" and overview_data["PERatio"] != "None" and overview_data["EPS"] != "None" and overview_data["ROE"] != "None":
                 print(overview_data)
@@ -100,19 +99,20 @@ def get_company_overview(ticker):
     except Exception as err:
         return f"An error occurred: {err}"
 
-
-
-
+def get_global_market():
+    api_key = "QC6PHJMTIZHC8S6B"
+    # replace the "demo" apikey below with your own key from https://www.alphavantage.co/support/#api-key
+    url = f'https://www.alphavantage.co/query?function=MARKET_STATUS&apikey={api_key}'
+    r = requests.get(url)
+    data = r.json()
+    if data != None:
+        return data
+    else:
+        return 0
 
 companies = pd.read_csv('SP_500.csv')
 
 tickers = companies['Symbol'].unique()
-
-
-
-
-#company_static_info["Symbol"]
-
 
 class Users(db.Model):
     __tablename__ = 'users'
@@ -266,6 +266,7 @@ class GlobalMarket(db.Model):
         self.status = status
         self.notes = notes
 
+
 class FinancialData(db.Model):
     __tablename__ = "financialdata"
     id = db.Column(db.Integer, primary_key=True)
@@ -342,13 +343,39 @@ def dbinit():
             db.session.add(CurrentStockPrice(tickerStock, datetime.now(), stockPriceList["Current Price"], stockPriceList["Current Volume"]))
             db.session.commit()
     
+    # Use the function and store the result
+    print("-------")
+    split_markets = split_primary_exchanges(get_global_market())
+    marketList = split_markets
+    for market in marketList:
+        print(market)
+        if market != 0 and market != None:
+            open_time = datetime.strptime(market['local_open'], "%H:%M").time()
+            close_time = datetime.strptime(market['local_close'], "%H:%M").time()
+            db.session.add(GlobalMarket(market["market_type"], market["region"], market["primary_exchanges"], open_time, close_time, market["current_status"], market["notes"]))
+            db.session.commit()
+            print("Inserted into Global Markets table!")
+    
     #notes, observations from insertion into DB
         #Company table name doesn't contain the comapny name, but the stock exchange (NYSE or NASDAQ)
         #so Company's name and exchange attribute has the same values!!!
 
-def companyInit():
-    for tickerList in tickers:
-        company_statistic_info = get_static_company_info(tickerList)
-        if company_statistic_info != 0:
-            db.session.add(Company(tickerList, company_statistic_info["Name"], company_statistic_info["Sector"], company_statistic_info["Industry"], company_statistic_info["Exchange"], company_statistic_info["Currency"], company_statistic_info["Country"], company_statistic_info["Address"], company_statistic_info["Description"]))
-            db.session.commit()
+       
+
+
+def split_primary_exchanges(json_data):
+    new_markets = []
+    for market in json_data['markets']:
+        exchanges = market['primary_exchanges'].split(', ')
+        for exchange in exchanges:
+            new_market = market.copy()  # Copy the original market dictionary
+            new_market['primary_exchanges'] = exchange  # Replace with the single exchange
+            new_markets.append(new_market)
+    return new_markets
+
+
+
+
+
+
+
