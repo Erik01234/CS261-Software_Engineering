@@ -11,5 +11,20 @@ data = r.json()
 
 print(data)
 
-# pretty_json = json.dumps(data, indent=4)
-# print(pretty_json)
+def split_primary_exchanges(json_data):
+    new_markets = []
+    for market in json_data['markets']:
+        exchanges = market['primary_exchanges'].split(', ')
+        for exchange in exchanges:
+            new_market = market.copy()  # Copy the original market dictionary
+            new_market['primary_exchanges'] = exchange  # Replace with the single exchange
+            new_markets.append(new_market)
+    return new_markets
+
+# Use the function and store the result
+split_markets = split_primary_exchanges(data)
+
+# print(split_markets)
+# Print the result or process it further
+for market in split_markets:
+    print(json.dumps(market, indent=4))
