@@ -21,21 +21,21 @@ from itsdangerous import URLSafeTimedSerializer
 from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
 import yagmail 
-from schema import db, dbinit, Users
+from schema import db, dbinit, Users, get_current_stock_price_and_volume, CurrentStockPrice, get_company_overview, FinancialData, getTopGainersLosers, TopGainers, TopLosers, ActivelyTraded, split_primary_exchanges, get_global_market, GlobalMarket
 from flask_sqlalchemy import SQLAlchemy
 from apscheduler.schedulers.background import BackgroundScheduler
 srializer = URLSafeTimedSerializer('xyz567')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30) 
+import pandas as pd
 #session is going to terminate after 30 minutes
 mail = Mail(app)
 db.init_app(app)
 
-scheduler = BackgroundScheduler()
-scheduler.start()
 
-resetwholedb = True
+
+resetwholedb = False
 if resetwholedb:
     with app.app_context():
         db.drop_all()
@@ -61,11 +61,62 @@ gmail_password = app_pwd
 yag = yagmail.SMTP(gmail_user, gmail_password, host="smtp.gmail.com")
 
 
-def dbupdates():
+companies = pd.read_csv('SP_500.csv')
+tickers = companies['Symbol'].unique()
+def frequentUpdates():
     #visualize changes once each is updated, so it is more clear for the user
-    print("Here we will define the updates on the database that will happen periodically to keep us up to date")
+    for tickerStock in tickers:
+        stockPriceList = get_current_stock_price_and_volume(tickerStock)
+        if stockPriceList != 0:
+            db.session.add(CurrentStockPrice(tickerStock, datetime.now(), stockPriceList["Current Price"], stockPriceList["Current Volume"]))
+            db.session.commit()
+    topGainersLosersDict = getTopGainersLosers()
+    topGainers = topGainersLosersDict["top_gainers"]
+    topLosers = topGainersLosersDict["top_losers"]
+    activelyTraded = topGainersLosersDict["most_actively_traded"]
+    for gainers in topGainers:
+        if gainers != None and gainers != 0:
+            print(gainers)
+            percent_float = float(gainers["change_percentage"].rstrip('%'))
+            db.session.add(TopGainers(gainers["ticker"], gainers["price"], gainers["change_amount"], percent_float, gainers["volume"]))
+            db.session.commit()
+    
+    for losers in topLosers:
+        if losers != None and losers != 0:
+            print(losers)
+            percent_float = float(losers["change_percentage"].rstrip('%'))
+            db.session.add(TopLosers(losers["ticker"], losers["price"], losers["change_amount"], percent_float, losers["volume"]))
+            db.session.commit()
 
-#scheduler.add_job(dbupdates, 'interval', seconds=1)
+    for active in activelyTraded:
+        if active != None and active != 0:
+            print(active)
+            percent_float = float(active["change_percentage"].rstrip('%'))
+            db.session.add(ActivelyTraded(active["ticker"], active["price"], active["change_amount"], percent_float, active["volume"]))
+            db.session.commit()
+    
+    split_markets = split_primary_exchanges(get_global_market())
+    marketList = split_markets
+    for market in marketList:
+        print(market)
+        if market != 0 and market != None:
+            open_time = datetime.strptime(market['local_open'], "%H:%M").time()
+            close_time = datetime.strptime(market['local_close'], "%H:%M").time()
+            db.session.add(GlobalMarket(market["market_type"], market["region"], market["primary_exchanges"], open_time, close_time, market["current_status"], market["notes"]))
+            db.session.commit()
+            print("Inserted into Global Markets table!")
+
+def dailyUpdates():
+    for tickerOverview in tickers:
+        overview = get_company_overview(tickerOverview)
+        if overview != 0:
+            db.session.add(FinancialData(tickerOverview, datetime.now(), overview["MarketCapitalization"], overview["PERatio"], overview["EPS"], overview["ROE"]))
+            db.session.commit()
+    
+scheduler = BackgroundScheduler()
+scheduler.start()
+scheduler.add_job(frequentUpdates, 'interval', minutes=5)
+scheduler.add_job(dailyUpdates, 'interval', hours=24)
 
 
 @app.route('/')

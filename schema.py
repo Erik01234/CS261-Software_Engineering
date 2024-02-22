@@ -101,8 +101,17 @@ def get_company_overview(ticker):
 
 def get_global_market():
     api_key = "QC6PHJMTIZHC8S6B"
-    # replace the "demo" apikey below with your own key from https://www.alphavantage.co/support/#api-key
     url = f'https://www.alphavantage.co/query?function=MARKET_STATUS&apikey={api_key}'
+    r = requests.get(url)
+    data = r.json()
+    if data != None:
+        return data
+    else:
+        return 0
+    
+def getTopGainersLosers():
+    api_key = "QC6PHJMTIZHC8S6B"
+    url = f'https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey={api_key}'
     r = requests.get(url)
     data = r.json()
     if data != None:
@@ -115,6 +124,7 @@ companies = pd.read_csv('SP_500.csv')
 tickers = companies['Symbol'].unique()
 
 class Users(db.Model):
+    #constant updates - dynamic
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.Text())
@@ -130,7 +140,7 @@ class Users(db.Model):
 
 
 class Company(db.Model):
-    #will fill this up with those 500 companies that we are going to track 
+    #static table 
     __tablename__ = 'company'
     id = db.Column(db.Integer, primary_key=True)
     ticker = db.Column(db.String)
@@ -155,7 +165,7 @@ class Company(db.Model):
         self.description = description
 
 class UserCompany(db.Model): 
-    #stores which users are following which company - a simple pairing
+    #constant updates - dynamic
     __tablename__ = 'usercompany'
     id = db.Column(db.Integer, primary_key=True)
     user = db.Column(db.Text())
@@ -167,6 +177,7 @@ class UserCompany(db.Model):
 
 
 class Articles(db.Model):
+    #constant updates - PERIODIC/DYNAMIC???
     __tablename__ = 'articles'
     id = db.Column(db.Integer, primary_key=True)
     url = db.Column(db.String(255))
@@ -190,6 +201,7 @@ class Articles(db.Model):
 
     
 class ArticleTickers(db.Model):
+    #constant updates - dynamic
     __tablename__ = 'articletickers'
     id = db.Column(db.Integer, primary_key=True)
     articleID = db.Column(db.Integer, db.ForeignKey('articles.id'))
@@ -204,28 +216,34 @@ class ArticleTickers(db.Model):
         self.sentimentScore = sentimentScore
 
 class TopGainers(db.Model):
+    #constant updates - PERIODIC
     __tablename__ = 'topgainers'
-    ticker = db.Column(db.String(10), primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
+    ticker = db.Column(db.String(10))
     price = db.Column(db.Float(precision=6))
     change = db.Column(db.Float(precision=6))
     changePercent = db.Column(db.Float(precision=6))
     volume = db.Column(db.Float)
 
-    def __init__(self, price, change, changePercent, volume):
+    def __init__(self, ticker, price, change, changePercent, volume):
+        self.ticker = ticker
         self.price = price
         self.change = change
         self.changePercent = changePercent
         self.volume = volume
 
 class TopLosers(db.Model):
+    #constant updates - PERIODIC
     __tablename__ = 'toplosers'
-    ticker = db.Column(db.String(10), primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
+    ticker = db.Column(db.String(10))
     price = db.Column(db.Float(precision=6))
     change = db.Column(db.Float(precision=6))
     changePercent = db.Column(db.Float(precision=6))
     volume = db.Column(db.Float)
 
-    def __init__(self, price, change, changePercent, volume):
+    def __init__(self, ticker, price, change, changePercent, volume):
+        self.ticker = ticker
         self.price = price
         self.change = change
         self.changePercent = changePercent
@@ -233,20 +251,24 @@ class TopLosers(db.Model):
 
 
 class ActivelyTraded(db.Model):
+    #constant updates - PERIODIC -
     __tablename__ = 'activelytraded'
-    ticker = db.Column(db.String(10), primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
+    ticker = db.Column(db.String(10))
     price = db.Column(db.Float(precision=6))
     change = db.Column(db.Float(precision=6))
     changePercent = db.Column(db.Float(precision=6))
     volume = db.Column(db.Float)
 
-    def __init__(self, price, change, changePercent, volume):
+    def __init__(self, ticker, price, change, changePercent, volume):
+        self.ticker = ticker
         self.price = price
         self.change = change
         self.changePercent = changePercent
         self.volume = volume
 
 class GlobalMarket(db.Model):
+    #static, but based on closing time, we potentially have to modify status
     __tablename__ = "globalmarket"
     id = db.Column(db.Integer, primary_key=True)
     type = db.Column(db.String(20))
@@ -268,6 +290,7 @@ class GlobalMarket(db.Model):
 
 
 class FinancialData(db.Model):
+    #constant updates - PERIODIC (daily) - done in server.py
     __tablename__ = "financialdata"
     id = db.Column(db.Integer, primary_key=True)
     tickerID = db.Column(db.String, db.ForeignKey('company.ticker'))
@@ -286,6 +309,7 @@ class FinancialData(db.Model):
         self.date = date
 
 class CurrentStockPrice(db.Model):
+    #constant updates - PERIODIC (5 minutes) - done in server.py
     __tablename__ = "currentstockprice"
     id = db.Column(db.Integer, primary_key=True)
     tickerID = db.Column(db.String, db.ForeignKey('company.ticker'))
@@ -325,7 +349,8 @@ def dbinit():
         ]
     db.session.add_all(user_list)
     db.session.commit()
-    for tickerList in tickers:
+    
+    '''for tickerList in tickers:
         company_statistic_info = get_static_company_info(tickerList)
         if company_statistic_info != 0:
             db.session.add(Company(tickerList, company_statistic_info["Name"], company_statistic_info["Sector"], company_statistic_info["Industry"], company_statistic_info["Exchange"], company_statistic_info["Currency"], company_statistic_info["Country"], company_statistic_info["Address"], company_statistic_info["Description"]))
@@ -343,6 +368,7 @@ def dbinit():
             db.session.add(CurrentStockPrice(tickerStock, datetime.now(), stockPriceList["Current Price"], stockPriceList["Current Volume"]))
             db.session.commit()
     
+    
     # Use the function and store the result
     print("-------")
     split_markets = split_primary_exchanges(get_global_market())
@@ -355,10 +381,33 @@ def dbinit():
             db.session.add(GlobalMarket(market["market_type"], market["region"], market["primary_exchanges"], open_time, close_time, market["current_status"], market["notes"]))
             db.session.commit()
             print("Inserted into Global Markets table!")
+    '''
     
-    #notes, observations from insertion into DB
-        #Company table name doesn't contain the comapny name, but the stock exchange (NYSE or NASDAQ)
-        #so Company's name and exchange attribute has the same values!!!
+    topGainersLosersDict = getTopGainersLosers()
+    topGainers = topGainersLosersDict["top_gainers"]
+    topLosers = topGainersLosersDict["top_losers"]
+    activelyTraded = topGainersLosersDict["most_actively_traded"]
+    for gainers in topGainers:
+        if gainers != None and gainers != 0:
+            print(gainers)
+            percent_float = float(gainers["change_percentage"].rstrip('%'))
+            db.session.add(TopGainers(gainers["ticker"], gainers["price"], gainers["change_amount"], percent_float, gainers["volume"]))
+            db.session.commit()
+    
+    for losers in topLosers:
+        if losers != None and losers != 0:
+            print(losers)
+            percent_float = float(losers["change_percentage"].rstrip('%'))
+            db.session.add(TopLosers(losers["ticker"], losers["price"], losers["change_amount"], percent_float, losers["volume"]))
+            db.session.commit()
+
+    for active in activelyTraded:
+        if active != None and active != 0:
+            print(active)
+            percent_float = float(active["change_percentage"].rstrip('%'))
+            db.session.add(ActivelyTraded(active["ticker"], active["price"], active["change_amount"], percent_float, active["volume"]))
+            db.session.commit()
+
 
        
 
@@ -372,6 +421,8 @@ def split_primary_exchanges(json_data):
             new_market['primary_exchanges'] = exchange  # Replace with the single exchange
             new_markets.append(new_market)
     return new_markets
+
+
 
 
 
