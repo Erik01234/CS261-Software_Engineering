@@ -4,10 +4,11 @@ from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
 from sqlalchemy import ForeignKey, Time
 import datetime
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import requests
 import json
+import logging
 
 db = SQLAlchemy()
 
@@ -123,6 +124,51 @@ companies = pd.read_csv('SP_500.csv')
 
 tickers = companies['Symbol'].unique()
 
+def get_news_for_ticker(ticker, topic, sort, days_ago, limit):
+    api_key = "QC6PHJMTIZHC8S6B"
+    time_from = (datetime.utcnow() - timedelta(days=days_ago)).strftime('%Y%m%dT%H%M')
+    
+    # Construct the API URL with the dynamic 'time_from'
+    url = f'https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={ticker}&topics={topic}&sort={sort}&time_from={time_from}&limit={limit}&apikey={api_key}'
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # This will raise an exception for HTTP errors
+        data = response.json()
+        news_items = format_news_feed_data_for_ticker(data, ticker)
+        return news_items
+    except requests.exceptions.HTTPError as errh:
+        logging.error("Http Error: %s", errh)
+    except requests.exceptions.ConnectionError as errc:
+        logging.error("Error Connecting: %s", errc)
+    except requests.exceptions.Timeout as errt:
+        logging.error("Timeout Error: %s", errt)
+    except requests.exceptions.RequestException as err:
+        logging.error("Other Error: %s", err)
+
+def format_news_feed_data_for_ticker(data, ticker):
+    articles = []
+    for item in data.get('feed', []):
+        try:
+            publishedTime = datetime.strptime(item.get('time_published'), "%Y%m%dT%H%M%S")
+        except ValueError:
+            publishedTime = 'N/A'  # Handle incorrect format gracefully
+        article = {
+            "tickerID": ticker,
+            "url": item.get('url', 'N/A'),
+            "publishedTime": publishedTime,
+            "summary": item.get('summary', 'N/A'),
+            "bannerImageURL": item.get('banner_image', 'N/A'),
+            "source": item.get('source', 'N/A'),
+            "category": item.get('category_within_source', 'N/A'),
+            "sourceDomain": item.get('source_domain', 'N/A'),
+            "overallSentiment": item.get('overall_sentiment_label', 'N/A')
+        }
+        articles.append(article)
+    return articles
+
+# Now calling the function with adjusted parameters for last 7 days and sorting by relevance
+
+
 class Users(db.Model):
     #constant updates - dynamic
     __tablename__ = 'users'
@@ -180,6 +226,7 @@ class Articles(db.Model):
     #constant updates - PERIODIC/DYNAMIC???
     __tablename__ = 'articles'
     id = db.Column(db.Integer, primary_key=True)
+    tickerID = db.Column(db.Integer)
     url = db.Column(db.String(255))
     publishedTime = db.Column(db.DateTime)
     summary = db.Column(db.Text())
@@ -189,8 +236,9 @@ class Articles(db.Model):
     sourceDomain = db.Column(db.String(255))
     overallSentiment = db.Column(db.String(50))
 
-    def __init__(self, url, publishedTime, summary, bannerImageURL, source, category, sourceDomain, overallSentiment):
+    def __init__(self, tickerID, url, publishedTime, summary, bannerImageURL, source, category, sourceDomain, overallSentiment):
         self.url = url
+        self.tickerID = tickerID
         self.publishedTime = publishedTime
         self.summary = summary
         self.bannerImageURL = bannerImageURL
@@ -381,7 +429,7 @@ def dbinit():
             db.session.add(GlobalMarket(market["market_type"], market["region"], market["primary_exchanges"], open_time, close_time, market["current_status"], market["notes"]))
             db.session.commit()
             print("Inserted into Global Markets table!")
-    '''
+    
     
     topGainersLosersDict = getTopGainersLosers()
     topGainers = topGainersLosersDict["top_gainers"]
@@ -407,9 +455,13 @@ def dbinit():
             percent_float = float(active["change_percentage"].rstrip('%'))
             db.session.add(ActivelyTraded(active["ticker"], active["price"], active["change_amount"], percent_float, active["volume"]))
             db.session.commit()
-
-
-       
+    '''
+    for tickerNews in tickers:
+        news_items = get_news_for_ticker(tickerNews, '', 'RELEVANCE', 1, '5') 
+        for newsItem in news_items:
+            print(newsItem)
+            db.session.add(Articles(newsItem["tickerID"], newsItem["url"], newsItem["publishedTime"], newsItem["summary"], newsItem["bannerImageURL"], newsItem["source"], newsItem["category"], newsItem["sourceDomain"], newsItem["overallSentiment"]))
+            db.session.commit()
 
 
 def split_primary_exchanges(json_data):

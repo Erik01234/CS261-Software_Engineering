@@ -35,7 +35,7 @@ db.init_app(app)
 
 
 
-resetwholedb = False
+resetwholedb = True
 if resetwholedb:
     with app.app_context():
         db.drop_all()
