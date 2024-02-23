@@ -450,7 +450,7 @@ def dbinit():
     db.session.add_all(user_list)
     db.session.commit()
     
-    '''for tickerList in tickers:
+    for tickerList in tickers:
         company_statistic_info = get_static_company_info(tickerList)
         if company_statistic_info != 0:
             db.session.add(Company(tickerList, company_statistic_info["Name"], company_statistic_info["Sector"], company_statistic_info["Industry"], company_statistic_info["Exchange"], company_statistic_info["Currency"], company_statistic_info["Country"], company_statistic_info["Address"], company_statistic_info["Description"]))
@@ -510,14 +510,6 @@ def dbinit():
     
             
     for tickerNews in tickers:
-        news_items = get_news_for_ticker(tickerNews, '', 'RELEVANCE', 1, '5') 
-        for newsItem in news_items:
-            print(newsItem)
-            db.session.add(Articles(newsItem["tickerID"], newsItem["url"], newsItem["publishedTime"], newsItem["summary"], newsItem["bannerImageURL"], newsItem["source"], newsItem["category"], newsItem["sourceDomain"], newsItem["overallSentiment"]))
-            db.session.commit()
-    '''
-
-    for tickerNews in tickers:
         news_item = get_news(tickerNews, '', 'RELEVANCE', 1, '5')
         if news_item:
             for newsEntry in news_item:
@@ -546,6 +538,24 @@ def split_primary_exchanges(json_data):
             new_markets.append(new_market)
     return new_markets
 
+def fillUpNews():
+    for tickerNews in tickers:
+        news_item = get_news(tickerNews, '', 'RELEVANCE', 1, '5')
+        if news_item:
+            for newsEntry in news_item:
+                if newsEntry:
+                    print(json.dumps(newsEntry, default=custom_serializer, indent=4))
+                    authorArr = newsEntry["authors"]
+                    authorString = ', '.join(authorArr)
+                    news = Articles(newsEntry["tickerID"], newsEntry["title"], newsEntry["url"], newsEntry["publishedTime"], authorString, newsEntry["summary"], newsEntry["bannerImageURL"], newsEntry["source"], newsEntry["category"], newsEntry["sourceDomain"], newsEntry["overallSentiment"])
+                    db.session.add(news)
+                    db.session.flush() #retrieving the current article's ID so we can have multiple sentiments for the current articleID in the ArticleTickers table
+                    news_id = news.id
+                    for sentiment in newsEntry["tickerSentiments"]:
+                        if sentiment:
+                            sentiments = ArticleTickers(news_id, sentiment["ticker"], sentiment["relevanceScore"], sentiment["sentimentScore"])
+                            db.session.add(sentiments)
+            db.session.commit()
 
 
 

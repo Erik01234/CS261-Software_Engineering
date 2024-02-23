@@ -21,7 +21,7 @@ from itsdangerous import URLSafeTimedSerializer
 from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
 import yagmail 
-from schema import db, dbinit, Users, get_current_stock_price_and_volume, CurrentStockPrice, get_company_overview, FinancialData, getTopGainersLosers, TopGainers, TopLosers, ActivelyTraded, split_primary_exchanges, get_global_market, GlobalMarket
+from schema import db, dbinit, Users, get_current_stock_price_and_volume, CurrentStockPrice, get_company_overview, FinancialData, getTopGainersLosers, TopGainers, TopLosers, ActivelyTraded, split_primary_exchanges, get_global_market, GlobalMarket, fillUpNews, Articles, ArticleTickers
 from flask_sqlalchemy import SQLAlchemy
 from apscheduler.schedulers.background import BackgroundScheduler
 srializer = URLSafeTimedSerializer('xyz567')
@@ -35,22 +35,25 @@ db.init_app(app)
 
 
 
-resetwholedb = True
+resetwholedb = False
 if resetwholedb:
     with app.app_context():
         db.drop_all()
         db.create_all()
         dbinit()
 
-'''if we only want to reset/refill individual tables with data...
-have to definie a separate function in schema only containing the imports into that specific table only, and import it in this server file
-resetmarket = False
-if resetmarket:
+
+
+#if we only want to reset/refill individual tables with data...
+#have to definie a separate function in schema only containing the imports into that specific table only, and import it in this server file
+resetNews = False
+if resetNews:
     with app.app_context():
-        db.metadata.drop_all(bind=db.engine, tables=[GlobalMarket.__table__])
-        db.metadata.create_all(bind=db.engine, tables=[GlobalMarket.__table__])
-        globalMarketInit()
-'''
+        db.metadata.drop_all(bind=db.engine, tables=[Articles.__table__])
+        db.metadata.create_all(bind=db.engine, tables=[Articles.__table__])
+        db.metadata.drop_all(bind=db.engine, tables=[ArticleTickers.__table__])
+        db.metadata.create_all(bind=db.engine, tables=[ArticleTickers.__table__])
+        fillUpNews()
 
 with open('smtp_credentials.txt', 'r') as file:
     app_pwd = file.read() 
@@ -65,7 +68,7 @@ companies = pd.read_csv('SP_500.csv')
 tickers = companies['Symbol'].unique()
 def frequentUpdates():
     #visualize changes once each is updated, so it is more clear for the user
-    for tickerStock in tickers:
+    '''for tickerStock in tickers:
         stockPriceList = get_current_stock_price_and_volume(tickerStock)
         if stockPriceList != 0:
             db.session.add(CurrentStockPrice(tickerStock, datetime.now(), stockPriceList["Current Price"], stockPriceList["Current Volume"]))
@@ -104,14 +107,16 @@ def frequentUpdates():
             close_time = datetime.strptime(market['local_close'], "%H:%M").time()
             db.session.add(GlobalMarket(market["market_type"], market["region"], market["primary_exchanges"], open_time, close_time, market["current_status"], market["notes"]))
             db.session.commit()
-            print("Inserted into Global Markets table!")
+            print("Inserted into Global Markets table!")'''
+    print("Frequent update initiated.")
 
 def dailyUpdates():
-    for tickerOverview in tickers:
+    '''for tickerOverview in tickers:
         overview = get_company_overview(tickerOverview)
         if overview != 0:
             db.session.add(FinancialData(tickerOverview, datetime.now(), overview["MarketCapitalization"], overview["PERatio"], overview["EPS"], overview["ROE"]))
-            db.session.commit()
+            db.session.commit()'''
+    print("Daily update initiated.")
     
 scheduler = BackgroundScheduler()
 scheduler.start()
