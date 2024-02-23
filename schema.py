@@ -14,6 +14,14 @@ db = SQLAlchemy()
 
 import requests
 
+
+def custom_serializer(obj):
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    else:
+        raise TypeError("Type not serializable")
+    
+
 def get_static_company_info(ticker):
     API_KEY = 'QC6PHJMTIZHC8S6B'  # Replace with your actual AlphaVantage API key
     url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={API_KEY}'
@@ -124,7 +132,7 @@ companies = pd.read_csv('SP_500.csv')
 
 tickers = companies['Symbol'].unique()
 
-def get_news_for_ticker(ticker, topic, sort, days_ago, limit):
+'''def get_news_for_ticker(ticker, topic, sort, days_ago, limit):
     api_key = "QC6PHJMTIZHC8S6B"
     time_from = (datetime.utcnow() - timedelta(days=days_ago)).strftime('%Y%m%dT%H%M')
     
@@ -162,6 +170,64 @@ def format_news_feed_data_for_ticker(data, ticker):
             "category": item.get('category_within_source', 'N/A'),
             "sourceDomain": item.get('source_domain', 'N/A'),
             "overallSentiment": item.get('overall_sentiment_label', 'N/A')
+        }
+        articles.append(article)
+    return articles
+'''
+
+def get_news(tickers, topic, sort, days_ago, limit):
+    api_key = "QC6PHJMTIZHC8S6B"
+    time_from = (datetime.utcnow() - timedelta(days=days_ago)).strftime('%Y%m%dT%H%M')
+
+    # Construct the API URL with the dynamic 'time_from'
+    url = f'https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={tickers}&topics={topic}&sort={sort}&time_from={time_from}&limit={limit}&apikey={api_key}'
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # This will raise an exception for HTTP errors
+        data = response.json()
+        news_items = format_news_feed_data(data, tickers)
+        return news_items
+    except requests.exceptions.HTTPError as errh:
+        logging.error("Http Error: %s", errh)
+    except requests.exceptions.ConnectionError as errc:
+        logging.error("Error Connecting: %s", errc)
+    except requests.exceptions.Timeout as errt:
+        logging.error("Timeout Error: %s", errt)
+    except requests.exceptions.RequestException as err:
+        logging.error("Other Error: %s", err)
+
+def format_news_feed_data(data, tickers):
+    articles = []
+    for item in data.get('feed', []):
+        try:
+            publishedTime = datetime.strptime(item.get('time_published'), "%Y%m%dT%H%M%S")
+        except ValueError:
+            publishedTime = 'N/A'  # Handle incorrect format gracefully
+        
+        # Prepare ticker sentiment details if any
+        ticker_sentiments = []
+        for ticker_detail in item.get('ticker_sentiment', []):
+            ticker_sentiment = {
+                "ticker": ticker_detail.get('ticker', 'N/A'),
+                "relevanceScore": ticker_detail.get('relevance_score', 'N/A'),
+                "sentimentScore": ticker_detail.get('ticker_sentiment_score', 'N/A'),
+                "sentimentLabel": ticker_detail.get('ticker_sentiment_label', 'N/A')
+            }
+            ticker_sentiments.append(ticker_sentiment)
+        
+        article = {
+            "tickerID": tickers, 
+            "title": item.get('title', 'N/A'),
+            "url": item.get('url', 'N/A'),
+            "publishedTime": publishedTime,
+            "authors": item.get('authors', []),
+            "summary": item.get('summary', 'N/A'),
+            "bannerImageURL": item.get('banner_image', 'N/A'),
+            "source": item.get('source', 'N/A'),
+            "category": item.get('category_within_source', 'N/A'),
+            "sourceDomain": item.get('source_domain', 'N/A'),
+            "overallSentiment": item.get('overall_sentiment_label', 'N/A'),
+            "tickerSentiments": ticker_sentiments
         }
         articles.append(article)
     return articles
@@ -227,8 +293,10 @@ class Articles(db.Model):
     __tablename__ = 'articles'
     id = db.Column(db.Integer, primary_key=True)
     tickerID = db.Column(db.Integer)
+    title = db.Column(db.Text)
     url = db.Column(db.String(255))
     publishedTime = db.Column(db.DateTime)
+    authors = db.Column(db.String(255))
     summary = db.Column(db.Text())
     bannerImageURL = db.Column(db.String(255))
     source = db.Column(db.String(255))
@@ -236,9 +304,11 @@ class Articles(db.Model):
     sourceDomain = db.Column(db.String(255))
     overallSentiment = db.Column(db.String(50))
 
-    def __init__(self, tickerID, url, publishedTime, summary, bannerImageURL, source, category, sourceDomain, overallSentiment):
+    def __init__(self, tickerID, title, url, publishedTime, authors, summary, bannerImageURL, source, category, sourceDomain, overallSentiment):
         self.url = url
         self.tickerID = tickerID
+        self.title = title
+        self.authors = authors
         self.publishedTime = publishedTime
         self.summary = summary
         self.bannerImageURL = bannerImageURL
@@ -373,27 +443,9 @@ class CurrentStockPrice(db.Model):
 
 
 def dbinit():
-        #Tasneem - Tasneem
-        #Danyal - Danyal
-        #Rachel - Rachel
-        #Michael - Michael
-        #Marios - Marios
-    pwderik = generate_password_hash("erikpwd")
-    pwdtasneem = generate_password_hash("Tasneem")
-    pwddanyal = generate_password_hash("Danyal")
-    pwdrachel = generate_password_hash("Rachel")
-    pwdmichael = generate_password_hash("Michael")
-    pwdmarios = generate_password_hash("Marios")
     pwdadmin = generate_password_hash("admin")
     user_list = [
-        Users("rikifekete2003@gmail.com",pwderik,"x",1),
-        Users("Tasneem", pwdtasneem, "x", 1),
-        Users("Danyal", pwddanyal, "x", 1),
-        Users("Rachel", pwdrachel, "x", 1),
-        Users("Michael", pwdmichael, "x", 1),
-        Users("Marios", pwdmarios, "x", 1),
-        Users("admin", pwdadmin, "x", 0),
-        #Company(ticker, company_statistic_info["Name"], company_statistic_info["Sector"], company_statistic_info["Industry"], company_statistic_info["Exchange"], company_statistic_info["Currency"], company_statistic_info["Country"], company_statistic_info["Address"], company_statistic_info["Description"])
+        Users("admin", pwdadmin, "x", 1)
         ]
     db.session.add_all(user_list)
     db.session.commit()
@@ -455,12 +507,32 @@ def dbinit():
             percent_float = float(active["change_percentage"].rstrip('%'))
             db.session.add(ActivelyTraded(active["ticker"], active["price"], active["change_amount"], percent_float, active["volume"]))
             db.session.commit()
-    '''
+    
+            
     for tickerNews in tickers:
         news_items = get_news_for_ticker(tickerNews, '', 'RELEVANCE', 1, '5') 
         for newsItem in news_items:
             print(newsItem)
             db.session.add(Articles(newsItem["tickerID"], newsItem["url"], newsItem["publishedTime"], newsItem["summary"], newsItem["bannerImageURL"], newsItem["source"], newsItem["category"], newsItem["sourceDomain"], newsItem["overallSentiment"]))
+            db.session.commit()
+    '''
+
+    for tickerNews in tickers:
+        news_item = get_news(tickerNews, '', 'RELEVANCE', 1, '5')
+        if news_item:
+            for newsEntry in news_item:
+                if newsEntry:
+                    print(json.dumps(newsEntry, default=custom_serializer, indent=4))
+                    authorArr = newsEntry["authors"]
+                    authorString = ', '.join(authorArr)
+                    news = Articles(newsEntry["tickerID"], newsEntry["title"], newsEntry["url"], newsEntry["publishedTime"], authorString, newsEntry["summary"], newsEntry["bannerImageURL"], newsEntry["source"], newsEntry["category"], newsEntry["sourceDomain"], newsEntry["overallSentiment"])
+                    db.session.add(news)
+                    db.session.flush() #retrieving the current article's ID so we can have multiple sentiments for the current articleID in the ArticleTickers table
+                    news_id = news.id
+                    for sentiment in newsEntry["tickerSentiments"]:
+                        if sentiment:
+                            sentiments = ArticleTickers(news_id, sentiment["ticker"], sentiment["relevanceScore"], sentiment["sentimentScore"])
+                            db.session.add(sentiments)
             db.session.commit()
 
 
