@@ -470,7 +470,7 @@ def dbinit():
     
     
     # Use the function and store the result
-    print("-------")
+    print("---- ---")
     split_markets = split_primary_exchanges(get_global_market())
     marketList = split_markets
     for market in marketList:
