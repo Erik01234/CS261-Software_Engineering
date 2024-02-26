@@ -35,7 +35,7 @@ db.init_app(app)
 
 
 
-resetwholedb = True
+resetwholedb = False
 if resetwholedb:
     with app.app_context():
         db.drop_all()
@@ -67,55 +67,62 @@ yag = yagmail.SMTP(gmail_user, gmail_password, host="smtp.gmail.com")
 companies = pd.read_csv('SP_500.csv')
 tickers = companies['Symbol'].unique()
 def frequentUpdates():
-    #visualize changes once each is updated, so it is more clear for the user
-    '''for tickerStock in tickers:
-        stockPriceList = get_current_stock_price_and_volume(tickerStock)
-        if stockPriceList != 0:
-            db.session.add(CurrentStockPrice(tickerStock, datetime.now(), stockPriceList["Current Price"], stockPriceList["Current Volume"]))
-            db.session.commit()
-    topGainersLosersDict = getTopGainersLosers()
-    topGainers = topGainersLosersDict["top_gainers"]
-    topLosers = topGainersLosersDict["top_losers"]
-    activelyTraded = topGainersLosersDict["most_actively_traded"]
-    for gainers in topGainers:
-        if gainers != None and gainers != 0:
-            print(gainers)
-            percent_float = float(gainers["change_percentage"].rstrip('%'))
-            db.session.add(TopGainers(gainers["ticker"], gainers["price"], gainers["change_amount"], percent_float, gainers["volume"]))
-            db.session.commit()
-    
-    for losers in topLosers:
-        if losers != None and losers != 0:
-            print(losers)
-            percent_float = float(losers["change_percentage"].rstrip('%'))
-            db.session.add(TopLosers(losers["ticker"], losers["price"], losers["change_amount"], percent_float, losers["volume"]))
-            db.session.commit()
 
-    for active in activelyTraded:
-        if active != None and active != 0:
-            print(active)
-            percent_float = float(active["change_percentage"].rstrip('%'))
-            db.session.add(ActivelyTraded(active["ticker"], active["price"], active["change_amount"], percent_float, active["volume"]))
-            db.session.commit()
-    
-    split_markets = split_primary_exchanges(get_global_market())
-    marketList = split_markets
-    for market in marketList:
-        print(market)
-        if market != 0 and market != None:
-            open_time = datetime.strptime(market['local_open'], "%H:%M").time()
-            close_time = datetime.strptime(market['local_close'], "%H:%M").time()
-            db.session.add(GlobalMarket(market["market_type"], market["region"], market["primary_exchanges"], open_time, close_time, market["current_status"], market["notes"]))
-            db.session.commit()
-            print("Inserted into Global Markets table!")'''
-    print("Frequent update initiated.")
+    for ticker in tickers:
+        with app.app_context():
+            currentCurrent = CurrentStockPrice.query.filter_by(tickerID=ticker).first()
+            if currentCurrent and currentCurrent.tickerID:
+                stockPriceList = get_current_stock_price_and_volume(ticker)
+                currentCurrent.timestamp = datetime.now()
+                currentCurrent.stockPrice = stockPriceList["Current Price"]
+                currentCurrent.volumeOfTrade = stockPriceList["Current Volume"]
+                db.session.commit()
+
+    #TO REWRITE INTO UPDATES INSTEAD OF INSERTIONS, LIKE JUST ABOVE (above code works)
+        '''for tickerStock in tickers:
+            stockPriceList = get_current_stock_price_and_volume(tickerStock)
+            if stockPriceList != 0:
+                db.session.add(CurrentStockPrice(tickerStock, datetime.now(), stockPriceList["Current Price"], stockPriceList["Current Volume"]))
+                db.session.commit()
+        topGainersLosersDict = getTopGainersLosers()
+        topGainers = topGainersLosersDict["top_gainers"]
+        topLosers = topGainersLosersDict["top_losers"]
+        activelyTraded = topGainersLosersDict["most_actively_traded"]
+        for gainers in topGainers:
+            if gainers != None and gainers != 0:
+                print(gainers)
+                percent_float = float(gainers["change_percentage"].rstrip('%'))
+                db.session.add(TopGainers(gainers["ticker"], gainers["price"], gainers["change_amount"], percent_float, gainers["volume"]))
+                db.session.commit()
+        
+        for losers in topLosers:
+            if losers != None and losers != 0:
+                print(losers)
+                percent_float = float(losers["change_percentage"].rstrip('%'))
+                db.session.add(TopLosers(losers["ticker"], losers["price"], losers["change_amount"], percent_float, losers["volume"]))
+                db.session.commit()
+
+        for active in activelyTraded:
+            if active != None and active != 0:
+                print(active)
+                percent_float = float(active["change_percentage"].rstrip('%'))
+                db.session.add(ActivelyTraded(active["ticker"], active["price"], active["change_amount"], percent_float, active["volume"]))
+                db.session.commit()
+        
+        split_markets = split_primary_exchanges(get_global_market())
+        marketList = split_markets
+        for market in marketList:
+            print(market)
+            if market != 0 and market != None:
+                open_time = datetime.strptime(market['local_open'], "%H:%M").time()
+                close_time = datetime.strptime(market['local_close'], "%H:%M").time()
+                db.session.add(GlobalMarket(market["market_type"], market["region"], market["primary_exchanges"], open_time, close_time, market["current_status"], market["notes"]))
+                db.session.commit()
+                print("Inserted into Global Markets table!")
+        print("Frequent update initiated.")'''
 
 def dailyUpdates():
-    '''for tickerOverview in tickers:
-        overview = get_company_overview(tickerOverview)
-        if overview != 0:
-            db.session.add(FinancialData(tickerOverview, datetime.now(), overview["MarketCapitalization"], overview["PERatio"], overview["EPS"], overview["ROE"]))
-            db.session.commit()'''
+    #UPDATE FINANCIAL DATA TABLE
     print("Daily update initiated.")
     
 scheduler = BackgroundScheduler()
