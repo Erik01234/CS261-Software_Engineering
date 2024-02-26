@@ -9,6 +9,7 @@ import pandas as pd
 import requests
 import json
 import logging
+import csv
 
 db = SQLAlchemy()
 
@@ -450,13 +451,14 @@ def dbinit():
     db.session.add_all(user_list)
     db.session.commit()
     
-    for tickerList in tickers:
-        company_statistic_info = get_static_company_info(tickerList)
-        if company_statistic_info != 0:
-            db.session.add(Company(tickerList, company_statistic_info["Name"], company_statistic_info["Sector"], company_statistic_info["Industry"], company_statistic_info["Exchange"], company_statistic_info["Currency"], company_statistic_info["Country"], company_statistic_info["Address"], company_statistic_info["Description"]))
+    with open('companies.csv', 'r') as file: 
+        #read static company data from the companies.csv file
+        csvreader = csv.reader(file)
+        for row in csvreader:
+            db.session.add(Company(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]))
             db.session.commit()
-
-    for tickerOverview in tickers:
+    
+    '''for tickerOverview in tickers:
         overview = get_company_overview(tickerOverview)
         if overview != 0:
             db.session.add(FinancialData(tickerOverview, datetime.now(), overview["MarketCapitalization"], overview["PERatio"], overview["EPS"], overview["ROE"]))
@@ -526,6 +528,7 @@ def dbinit():
                             sentiments = ArticleTickers(news_id, sentiment["ticker"], sentiment["relevanceScore"], sentiment["sentimentScore"])
                             db.session.add(sentiments)
             db.session.commit()
+    '''
 
 
 def split_primary_exchanges(json_data):
