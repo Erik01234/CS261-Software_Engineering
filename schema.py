@@ -95,12 +95,10 @@ def get_company_overview(ticker):
             'ROE': data.get('ReturnOnEquityTTM'),
         }
 
-        if overview_data["MarketCapitalization"] != None and overview_data["PERatio"] != None and overview_data["EPS"] != None and overview_data["ROE"] != None:
-            if overview_data["MarketCapitalization"] != "None" and overview_data["PERatio"] != "None" and overview_data["EPS"] != "None" and overview_data["ROE"] != "None":
-                print(overview_data)
-                return overview_data
-            else:
-                return 0
+        if overview_data:
+            print(ticker)
+            print(overview_data)
+            return overview_data
         else:
             return 0
     
@@ -222,6 +220,7 @@ class Company(db.Model):
     country = db.Column(db.String)
     address = db.Column(db.Text())
     description = db.Column(db.Text())
+
 
     def __init__(self, ticker, name, sector, industry, exchange, currency, country, address, description):
         self.name = name
@@ -414,14 +413,55 @@ def dbinit():
         for row in csvreader:
             db.session.add(Company(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]))
             db.session.commit()
+
     
-    for tickerOverview in tickers:
+
+    #TO USE FOR DAILY UPDATES
+    '''with open('financialdata.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        #writer.writerow([tickerOverview, datetime.now(), str(overview["MarketCapitalization"]), overview["PERatio"], overview["EPS"], overview["ROE"]])
+        for tickerOverview in tickers:
+            overview = get_company_overview(tickerOverview)
+            if isinstance(overview, dict):
+                if overview != 0:
+                    writer.writerow([tickerOverview, datetime.now(), overview["MarketCapitalization"], overview["PERatio"], overview["EPS"], overview["ROE"]])'''
+
+    
+    with open('financialdata.csv', 'r') as file: 
+        #read static financial data from the financialdata.csv file
+        csvreader = csv.reader(file)
+        for row in csvreader:
+            #there is a common pattern of entries/records in the CSV file
+            #all records in the CSV are string since it doesn't contain specific types
+            #so instead of null values, it is an empty string OR None as a string 
+            #the pattern is: either marketCap is None (as a string), and all other values are correct OR the ticker and date is non-empty, everything else is empty, OR all values are non-empty which is most optimal
+            print("Column 3 VALUE IS "+row[3])
+            if row[3] == "None":
+                if row[4] != "": 
+                    #if the marketCap is a None string AND all other values are non-empty (based on our observation), replace it with "0" and keep our other values
+                    db.session.add(FinancialData(row[0], datetime.now(), row[2], 0, row[4], row[5]))
+            elif row[2] == "":
+                if row[3] == "":
+                    #if all values but the ticker and datetime are empty, replace with default, type-specific null values
+                    #COULD/SHOULD SKIP THESE KINDS OF RECORDS
+                    db.session.add(FinancialData(row[0], datetime.now(), 0, 0, 0, 0))
+            else:
+                #else keep everything as is, updating with current timestamp 
+                db.session.add(FinancialData(row[0], datetime.now(), row[2], row[3], row[4], row[5]))
+            db.session.commit()
+
+    
+    '''for tickerOverview in tickers:
         overview = get_company_overview(tickerOverview)
         if overview != 0:
             db.session.add(FinancialData(tickerOverview, datetime.now(), overview["MarketCapitalization"], overview["PERatio"], overview["EPS"], overview["ROE"]))
-            db.session.commit()
+    db.session.commit()'''
+
+
+
+
     
-    for tickerStock in tickers:
+    '''for tickerStock in tickers:
         stockPriceList = get_current_stock_price_and_volume(tickerStock)
         if stockPriceList != 0:
             db.session.add(CurrentStockPrice(tickerStock, datetime.now(), stockPriceList["Current Price"], stockPriceList["Current Volume"]))
@@ -485,6 +525,7 @@ def dbinit():
                             sentiments = ArticleTickers(news_id, sentiment["ticker"], sentiment["relevanceScore"], sentiment["sentimentScore"])
                             db.session.add(sentiments)
             db.session.commit()
+    '''
 
 
 def split_primary_exchanges(json_data):
