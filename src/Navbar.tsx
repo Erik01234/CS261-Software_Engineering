@@ -12,23 +12,25 @@ function Navbar() {
         <span className="text-white text-4xl font-bold">CoRNIA</span>
         <button className="flex items-center text-white">
           <Link to="/home" className="flex items-center text-white">
-            Home
+            
             <img
               src={"/homeicon.png"}
               alt="Home"
-              className="h-10 w-10 rounded-full ml-2"
+              className="h-8 w-8"
               style={{ objectFit: "contain", padding: "8px" }}
             />
+            Home
           </Link>
         </button>
         <button className="flex items-center text-white">
-          Discover
+          
           <img
             src={"/discovericon.png"}
             alt="Discover"
-            className="h-10 w-10 rounded-full ml-2"
+            className="h-9 w-9"
             style={{ objectFit: "contain", padding: "8px" }}
           />
+          Discover
         </button>
       </div>
 
@@ -38,12 +40,12 @@ function Navbar() {
             <img
               src={"/filtericon.png"}
               alt="Filter"
-              className="h-10 w-10 rounded-full ml-2"
+              className="h-9 w-9 mr-2"
               style={{ objectFit: "contain", padding: "8px" }}
             />
           </button>
           <input
-            className="p-2 w-full max-w-md rounded mx-auto block"
+            className="p-2 pr-60 mr-8 w-full max-w-md rounded mx-auto block"
             type="search"
             placeholder="Search"
           />
@@ -54,12 +56,13 @@ function Navbar() {
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="flex items-center text-white"
           >
-            Profile
+            
             <img
               src={"/profile.png"}
               alt="Profile"
-              className="h-10 w-10 rounded-full ml-2"
+              className="h-5 w-5 mr-2"
             />
+            Profile
           </button>
           {isDropdownOpen && (
             <div className="absolute right-0 mt-2 py-2 w-48 bg-white rounded-md shadow-xl z-20">
