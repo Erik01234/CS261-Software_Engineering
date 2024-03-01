@@ -8,7 +8,7 @@
     #rikifekete2003@gmail.com - erikpwd (mine)
 
 import os
-from flask import Flask, request, redirect, render_template, url_for, session
+from flask import Flask, request, redirect, render_template, url_for, session, send_from_directory
 app = Flask(__name__)
 app.secret_key = 'incredibly secret key of ours'
 from datetime import datetime, timedelta
@@ -133,11 +133,14 @@ scheduler.add_job(dailyUpdates, 'interval', hours=24)
 
 @app.route('/')
 def home():
+    '''
     if 'username' in session:
         username = session['username']
         return render_template('index.html', username=username)
     else:
         return redirect('/login')
+    '''
+    return render_template('index.html')
 
 @app.route('/login')
 def loginpage():
