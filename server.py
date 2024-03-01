@@ -9,7 +9,7 @@
 
 import os
 from flask import Flask, request, redirect, render_template, url_for, session, send_from_directory
-app = Flask(__name__)
+app = Flask(__name__, static_url_path="/static")
 app.secret_key = 'incredibly secret key of ours'
 from datetime import datetime, timedelta
 from werkzeug import security
@@ -140,7 +140,7 @@ def home():
     else:
         return redirect('/login')
     '''
-    return render_template('index.html')
+    return send_from_directory('static', 'index.html')
 
 @app.route('/login')
 def loginpage():

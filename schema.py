@@ -406,17 +406,9 @@ def dbinit():
         ]
     db.session.add_all(user_list)
     db.session.commit()
-    
-    with open('companies.csv', 'r') as file: 
-        #read static company data from the companies.csv file
-        csvreader = csv.reader(file)
-        for row in csvreader:
-            db.session.add(Company(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]))
-            db.session.commit()
+        
 
-    
-
-    #TO USE FOR DAILY UPDATES
+    #DO NOT UNCOMMENT
     '''with open('financialdata.csv', 'w', newline='') as file:
         writer = csv.writer(file)
         #writer.writerow([tickerOverview, datetime.now(), str(overview["MarketCapitalization"]), overview["PERatio"], overview["EPS"], overview["ROE"]])
@@ -425,9 +417,17 @@ def dbinit():
             if isinstance(overview, dict):
                 if overview != 0:
                     writer.writerow([tickerOverview, datetime.now(), overview["MarketCapitalization"], overview["PERatio"], overview["EPS"], overview["ROE"]])'''
+    
+
+    '''with open('companies.csv', 'r') as file: 
+        #read static company data from the companies.csv file
+        csvreader = csv.reader(file)
+        for row in csvreader:
+            db.session.add(Company(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]))
+            db.session.commit()'''
 
     
-    with open('financialdata.csv', 'r') as file: 
+    '''with open('financialdata.csv', 'r') as file: 
         #read static financial data from the financialdata.csv file
         csvreader = csv.reader(file)
         for row in csvreader:
@@ -448,7 +448,7 @@ def dbinit():
             else:
                 #else keep everything as is, updating with current timestamp 
                 db.session.add(FinancialData(row[0], datetime.now(), row[2], row[3], row[4], row[5]))
-            db.session.commit()
+            db.session.commit()'''
 
     
     '''for tickerOverview in tickers:
