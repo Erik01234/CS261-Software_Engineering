@@ -57,10 +57,24 @@ function LoginPage() {
               </div>
               <div className="border-b border-gray-400 my-4"></div>
               <div className="flex justify-between">
-                <a href="#" className="text-sm text-blue-600 hover:underline">
-                  Forgot password?
+                <a
+                  href="#"
+                  className="text-sm text-blue-600 hover:underline"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigate("/forgotpassword");
+                  }}
+                >
+                  Forgot Password
                 </a>
-                <a href="#" className="text-sm text-blue-600 hover:underline">
+                <a
+                  href="#"
+                  className="text-sm text-blue-600 hover:underline"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigate("/register");
+                  }}
+                >
                   Create account
                 </a>
               </div>

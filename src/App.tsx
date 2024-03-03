@@ -8,6 +8,8 @@ import SavedArticles from "./SavedArticles";
 import LoginPage from "./LoginPage";
 import HomePage from "./Homepage";
 import Navbar from "./Navbar";
+import RegisterPage from "./RegisterPage";
+import ForgotPassword from "./ForgotPassword";
 
 function App() {
   return (
@@ -20,6 +22,8 @@ function App() {
           <Route path="/analysis/:headline" element={<ArticleAnalysis />} />
           <Route path="/followedcompanies" element={<FollowedCompanies />} />
           <Route path="/savedarticles" element={<SavedArticles />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgotpassword" element={<ForgotPassword />} />
         </Routes>
       </div>
     </Router>
