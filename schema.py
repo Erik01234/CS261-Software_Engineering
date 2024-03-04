@@ -398,6 +398,16 @@ class CurrentStockPrice(db.Model):
         self.tickerID = tickerID
         self.timestamp = timestamp
 
+class SavedArticles(db.Model):
+    __tablename__ = "savedarticles"
+    id = db.Column(db.Integer, primary_key="True")
+    userID = db.Column(db.Integer)
+    articleID = db.Column(db.Integer)
+
+    def __init__(self, userID, articleID):
+        self.userID = userID
+        self.articleID = articleID
+
 
 def dbinit():
     pwdadmin = generate_password_hash("admin")
@@ -405,6 +415,12 @@ def dbinit():
         Users("admin", pwdadmin, "x", 1)
         ]
     db.session.add_all(user_list)
+    db.session.commit()
+
+    user_company = [
+        UserCompany(1, "AMD")
+    ]
+    db.session.add_all(user_company)
     db.session.commit()
         
 
@@ -419,15 +435,15 @@ def dbinit():
                     writer.writerow([tickerOverview, datetime.now(), overview["MarketCapitalization"], overview["PERatio"], overview["EPS"], overview["ROE"]])'''
     
 
-    '''with open('companies.csv', 'r') as file: 
+    with open('companies.csv', 'r') as file: 
         #read static company data from the companies.csv file
         csvreader = csv.reader(file)
         for row in csvreader:
             db.session.add(Company(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]))
-            db.session.commit()'''
+            db.session.commit()
 
     
-    '''with open('financialdata.csv', 'r') as file: 
+    with open('financialdata.csv', 'r') as file: 
         #read static financial data from the financialdata.csv file
         csvreader = csv.reader(file)
         for row in csvreader:
@@ -448,7 +464,7 @@ def dbinit():
             else:
                 #else keep everything as is, updating with current timestamp 
                 db.session.add(FinancialData(row[0], datetime.now(), row[2], row[3], row[4], row[5]))
-            db.session.commit()'''
+            db.session.commit()
 
     
     '''for tickerOverview in tickers:
@@ -461,7 +477,7 @@ def dbinit():
 
 
     
-    '''for tickerStock in tickers:
+    for tickerStock in tickers[:50]:
         stockPriceList = get_current_stock_price_and_volume(tickerStock)
         if stockPriceList != 0:
             db.session.add(CurrentStockPrice(tickerStock, datetime.now(), stockPriceList["Current Price"], stockPriceList["Current Volume"]))
@@ -469,7 +485,7 @@ def dbinit():
     
     
     # Use the function and store the result
-    print("---- ---")
+    '''print("---- ---")
     split_markets = split_primary_exchanges(get_global_market())
     marketList = split_markets
     for market in marketList:
@@ -480,7 +496,7 @@ def dbinit():
             db.session.add(GlobalMarket(market["market_type"], market["region"], market["primary_exchanges"], open_time, close_time, market["current_status"], market["notes"]))
             db.session.commit()
             print("Inserted into Global Markets table!")
-    
+    '''
     
     topGainersLosersDict = getTopGainersLosers()
     topGainers = topGainersLosersDict["top_gainers"]
@@ -507,8 +523,9 @@ def dbinit():
             db.session.add(ActivelyTraded(active["ticker"], active["price"], active["change_amount"], percent_float, active["volume"]))
             db.session.commit()
     
+    
             
-    for tickerNews in tickers:
+    for tickerNews in tickers[:50]:
         news_item = get_news(tickerNews, '', 'RELEVANCE', 1, '5')
         if news_item:
             for newsEntry in news_item:
@@ -525,7 +542,7 @@ def dbinit():
                             sentiments = ArticleTickers(news_id, sentiment["ticker"], sentiment["relevanceScore"], sentiment["sentimentScore"])
                             db.session.add(sentiments)
             db.session.commit()
-    '''
+    
 
 
 def split_primary_exchanges(json_data):

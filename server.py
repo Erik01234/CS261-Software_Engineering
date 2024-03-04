@@ -21,7 +21,7 @@ from itsdangerous import URLSafeTimedSerializer
 from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
 import yagmail 
-from schema import db, dbinit, Users, get_current_stock_price_and_volume, CurrentStockPrice, get_company_overview, FinancialData, getTopGainersLosers, TopGainers, TopLosers, ActivelyTraded, split_primary_exchanges, get_global_market, GlobalMarket, fillUpNews, Articles, ArticleTickers
+from schema import db, dbinit, Users, get_current_stock_price_and_volume, CurrentStockPrice, get_company_overview, FinancialData, getTopGainersLosers, TopGainers, TopLosers, ActivelyTraded, split_primary_exchanges, get_global_market, GlobalMarket, fillUpNews, Articles, ArticleTickers, UserCompany, SavedArticles, Company
 from flask_sqlalchemy import SQLAlchemy
 from apscheduler.schedulers.background import BackgroundScheduler
 srializer = URLSafeTimedSerializer('xyz567')
@@ -84,7 +84,7 @@ def dailyUpdates():
     
 scheduler = BackgroundScheduler()
 scheduler.start()
-scheduler.add_job(frequentUpdates, 'interval', minutes=5)
+scheduler.add_job(frequentUpdates, 'interval', hours=24)
 scheduler.add_job(dailyUpdates, 'interval', hours=24)
 
 
@@ -99,41 +99,185 @@ def check_logged_in():
 def home():
     return send_from_directory('static', 'index.html')
 
+@app.route('/saveArticle', methods=["POST"])
+def saveArticle():
+    try:
+        data = request.json
+        headline = data.get('headline')
+        print(headline)
+        user = session["username"]
+        userIDQuery = Users.query.filter_by(email=user).first()
+        userIDQuery = userIDQuery.id
+        articleIDQuery = Articles.query.filter_by(title=headline).first()
+        articleID = articleIDQuery.id
+        toInsert = [
+            SavedArticles(userIDQuery, articleID)
+        ]
+        db.session.add_all(toInsert)
+        db.session.commit()
+
+        return jsonify({'message': 'Article saved successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/follow', methods=["POST"])
+def follow():
+    try:
+        data = request.json
+        companyID = data.get('companyId')
+        user = session["username"]
+        userIDQuery = Users.query.filter_by(email=user).first()
+        userIDQuery = userIDQuery.id
+        capitalTicker = companyID.upper()
+        toInsert = [
+            UserCompany(userIDQuery, capitalTicker)
+        ]
+        db.session.add_all(toInsert)
+        db.session.commit()
+
+        return jsonify({'message': 'Article saved successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
+
+@app.route('/unsaveArticle', methods=["POST"])
+def unsaveArticle():
+    try:
+        data = request.json
+        headline = data.get('headline')
+        print(headline)
+        user = session["username"]
+        userIDQuery = Users.query.filter_by(email=user).first()
+        userIDQuery = userIDQuery.id
+        articleIDQuery = Articles.query.filter_by(title=headline).first()
+        articleID = articleIDQuery.id
+        print(userIDQuery)
+        print(articleID)
+        SavedArticles.query.filter_by(userID=userIDQuery, articleID=articleID).delete()
+        db.session.commit()
+
+        return jsonify({'message': 'success'})
+    except Exception as e:
+        print(e)
+        return jsonify({'message': str(e)}), 500
+        
+    
+
+
+@app.route('/returnSavedArticles')
+def returnSavedArticles():
+    user = session["username"]
+    userIDQuery = Users.query.filter_by(email=user).first()
+    userIDQuery = userIDQuery.id
+    savedArticlesQuery = SavedArticles.query.filter_by(userID=userIDQuery).all()
+    newsIDsFollowed = [ns.articleID for ns in savedArticlesQuery]   
+    news_query = Articles.query.filter(Articles.id.in_(newsIDsFollowed)).all() 
+    feed_entries_json = [
+        {"headline": entry.title,
+        "source": entry.url,
+        "time": entry.publishedTime,
+        "icon": entry.bannerImageURL,
+        "logo": entry.bannerImageURL,
+        "company": entry.tickerID
+        }
+        for entry in news_query
+    ]
+    return jsonify(feed_entries_json)
+
 
 @app.route('/Homepage')
 def homepage():
-    feed_entries = [
-    {
-        "headline": "Microsoft topples Apple to become global market cap leader",
-        "source": "finance.yahoo.com",
-        "time": "18 hours ago",
-        "icon": "/microsoftnews.png",
-        "logo": "/microsoftIcon.png",
-        "company": "Microsoft"
-    },
-    {
-        "headline": "OpenAI's Breakthrough in Generative AI",
-        "source": "techcrunch.com",
-        "time": "1 week ago",
-        "icon": "/openAInews.png",
-        "logo": "/openAIIcon.png",
-        "company": "OpenAI"
-    },
-    {
-        "headline": "Tesla Electric Vehicles Surge in Popularity",
-        "source": "theverge.com",
-        "time": "2 days ago",
-        "icon": "/teslanews.png",
-        "logo": "/teslaIcon.png",
-        "company": "Tesla"
-    }]
-    return jsonify(feed_entries)
+    user = session["username"]
+    userIDQuery = Users.query.filter_by(email=user).first()
+    userIDQuery = userIDQuery.id
+    usercompanyquery = UserCompany.query.filter_by(user=userIDQuery).all()
+    company_tickers_followed = [uc.company for uc in usercompanyquery]
+    news_query = Articles.query.filter(Articles.tickerID.in_(company_tickers_followed)).all()
+    #news_query = Articles.query.all()
+    feed_entries_json = [
+        {"headline": entry.title,
+        "source": entry.url,
+        "time": entry.publishedTime,
+        "icon": entry.bannerImageURL,
+        "logo": entry.bannerImageURL,
+        "company": entry.tickerID,
+        "url": entry.url
+        }
+        for entry in news_query
+    ]
+    return jsonify(feed_entries_json)
+
+@app.route('/followedCompanies')
+def followedCompanies():
+    user = session["username"]
+    userIDQuery = Users.query.filter_by(email=user).first()
+    userIDQuery = userIDQuery.id
+    usercompanyquery = UserCompany.query.filter_by(user=userIDQuery).all()
+    company_ticker_query = [uc.company for uc in usercompanyquery]
+    company_query = Company.query.filter(Company.ticker.in_(company_ticker_query)).all()
+    print("Length of query is "+str(len(company_query)))
+    company_entries_json = [
+        {"companyName": entry.name,
+         "companyTicker": entry.ticker,
+         "sector": entry.sector,
+         "industry": entry.industry
+        }
+        for entry in company_query
+    ]
+    return jsonify(company_entries_json)
+
+@app.route('/Discover')
+def discover():
+    news_query = Articles.query.all()
+    #news_query = Articles.query.all()
+    feed_entries_json = [
+        {"headline": entry.title,
+        "source": entry.url,
+        "time": entry.publishedTime,
+        "icon": entry.bannerImageURL,
+        "logo": entry.bannerImageURL,
+        "company": entry.tickerID
+        }
+        for entry in news_query
+    ]
+    return jsonify(feed_entries_json)
+
 
 '''@app.route('/login')
 def loginpage():
     if 'username' in session:
         return redirect('/')
     return render_template('login.html')'''
+
+
+@app.route('/retrieveCompany', methods=["POST"])
+def retrieveCompany():
+    data = request.json
+    ticker = data.get('companyId')
+    capitalTicker = ticker.upper()
+    print(capitalTicker)
+    companyQuery = Company.query.filter_by(ticker=capitalTicker).first()
+    stockQuery = CurrentStockPrice.query.filter_by(tickerID=capitalTicker).first()
+    financialQuery = FinancialData.query.filter_by(tickerID=capitalTicker).first()
+    companyData = [{
+        "name": companyQuery.name,
+        "ticker": companyQuery.ticker,
+        "sector": companyQuery.sector,
+        "industry": companyQuery.industry,
+        "exchange": companyQuery.exchange,
+        "currency": companyQuery.currency,
+        "address": companyQuery.address,
+        "description": companyQuery.description,
+        "timestamp": stockQuery.timestamp,
+        "stockprice": stockQuery.stockPrice,
+        "volume": stockQuery.volumeOfTrade,
+        "marketcap": financialQuery.marketCap,
+        "pe": financialQuery.pe_ratio,
+        "eps": financialQuery.eps,
+        "roe": financialQuery.roe
+    }]
+    return jsonify(companyData)
+
 
 @app.route('/submitlogin', methods=['POST', 'GET'])
 def login():
@@ -240,7 +384,7 @@ def submitsignup():
     
 
     
-    usernm = request.form.get("email")
+    '''usernm = request.form.get("email")
     usernm = escape(usernm)
     passwd = request.form.get("password")
     passwd = escape(passwd)
@@ -283,7 +427,56 @@ def submitsignup():
             else:
                 return "User already exists! Please choose a different username!"
         else:
-            return "Invalid email format. Try again!"
+            return "Invalid email format. Try again!"'''
+        
+
+
+    data = request.json
+    usernm = data.get('email')
+    passwd = data.get('password')
+    hashed_pwd = generate_password_hash(passwd)
+    passwordre = data.get('confirmPassword')
+    token = srializer.dumps(usernm, salt='email-confirm')
+    
+    users = Users.query.filter_by(email=usernm).first()
+
+    regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
+    def check(usernm):
+        if(re.fullmatch(regex, usernm)):
+            return True
+        else:
+            return False
+    
+    check(usernm)
+
+    if check(usernm):
+            if users == None:
+                if passwd == passwordre:
+                    all_users = [
+                        Users(usernm,hashed_pwd,token, 1), 
+                    ]
+                    db.session.add_all(all_users)
+                    db.session.commit()
+                    '''link = url_for('confirmemail', token=token, external=True)
+                    urlbeginning = request.base_url
+                    urlnew = urlbeginning+link
+                    urlnew = urlnew.replace("/submitsignup", "")
+                    #print("URL to receive by person signing up is: "+urlnew)
+                    msgbody = 'Your verification link is {}'.format(urlnew)
+                    message = f"Subject: Email verification\n\n{msgbody}"
+                    yag.send(to=usernm, contents=[message])'''
+                    response_message = 'accept'
+                else:
+                    response_message = 'deny'
+            else:
+                response_message = 'deny'
+    else:
+        response_message = 'deny'
+            
+    return jsonify({'message': response_message})
+
+
+
 @app.route('/confirmemail/<token>')
 def confirmemail(token):
   email = srializer.loads(token, salt='email-confirm', max_age=3600)
