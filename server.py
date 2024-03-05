@@ -14,7 +14,7 @@ app.secret_key = 'incredibly secret key of ours'
 from datetime import datetime, timedelta
 from werkzeug import security
 from markupsafe import escape
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, not_
 from flask_mail import Mail, Message
 import re #for the signup page
 from itsdangerous import URLSafeTimedSerializer
@@ -35,7 +35,7 @@ db.init_app(app)
 
 
 
-resetwholedb = True
+resetwholedb = False
 if resetwholedb:
     with app.app_context():
         db.drop_all()
@@ -103,13 +103,11 @@ def home():
 def saveArticle():
     try:
         data = request.json
-        headline = data.get('headline')
-        print(headline)
+        articleID = data.get('id')
         user = session["username"]
         userIDQuery = Users.query.filter_by(email=user).first()
         userIDQuery = userIDQuery.id
-        articleIDQuery = Articles.query.filter_by(title=headline).first()
-        articleID = articleIDQuery.id
+        print(str(articleID))
         toInsert = [
             SavedArticles(userIDQuery, articleID)
         ]
@@ -135,9 +133,29 @@ def follow():
         db.session.add_all(toInsert)
         db.session.commit()
 
-        return jsonify({'message': 'Article saved successfully'})
+        return jsonify({'message': 'accept'})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'message': str(e)}), 500
+    
+
+@app.route('/unfollow', methods=["POST"])
+def unfollow():
+    try:
+        data = request.json
+        companyID = data.get('companyId')
+        user = session["username"]
+        userIDQuery = Users.query.filter_by(email=user).first()
+        userIDQuery = userIDQuery.id
+
+        capitalTicker = companyID.upper()
+        UserCompany.query.filter_by(user=userIDQuery, company=capitalTicker).delete()
+        db.session.commit()
+        print("here")
+        return jsonify({'message': 'accept'})
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    
+
     
 
 @app.route('/unsaveArticle', methods=["POST"])
@@ -201,11 +219,83 @@ def homepage():
         "icon": entry.bannerImageURL,
         "logo": entry.bannerImageURL,
         "company": entry.tickerID,
-        "url": entry.url
+        "url": entry.url,
+        'id': entry.id,
+        'summary': entry.summary,
+        'sentiment': entry.overallSentiment
         }
         for entry in news_query
     ]
     return jsonify(feed_entries_json)
+
+@app.route("/checkFollowStatus", methods=["POST"])
+def check_follow_status():
+    data = request.json
+    companyId = data.get("companyId")
+    user = session["username"]
+    userIDQuery = Users.query.filter_by(email=user).first()
+    userId = userIDQuery.id
+    companyId = companyId.upper()
+    recordCount = UserCompany.query.filter_by(user=userId, company=companyId).first() 
+    if recordCount is not None:
+        is_followed = True
+    else:
+        is_followed = False
+    print(companyId+" followed: "+str(is_followed))
+    return jsonify({"isFollowed": is_followed})
+
+
+
+@app.route('/similarCompany', methods=["POST"])
+def similarCompany():
+    data = request.json
+    companyId = data.get("companyId")
+    companyId = companyId.upper()
+    print(str(companyId)+" is the company ID")
+    user = session["username"]
+    userIDQuery = Users.query.filter_by(email=user).first()
+    userId = userIDQuery.id
+    companyQuery = Company.query.filter_by(ticker=companyId).first()
+    sector = companyQuery.sector
+    industry = companyQuery.industry
+    similarQuery = Company.query.filter(Company.industry==industry, Company.sector==sector, not_(Company.ticker == companyId)).limit(5).all()
+    #print(str(len(similarQuery))+" IS OUR COUNT")
+    if len(similarQuery) < 5:
+        #less than 5
+        additional_companies = Company.query.filter(Company.sector == sector, not_(Company.industry == industry)).limit(5-len(similarQuery)).all()
+        similarQuery.extend(additional_companies)
+        if len(similarQuery) < 5:
+            more_query = Company.query.filter(not_(Company.sector == sector), Company.industry == industry).limit(5-len(similarQuery)).all()
+            similarQuery.extend(more_query)
+    company_names = [uc.name for uc in similarQuery]
+    names = [
+        {"name": entry
+        }
+        for entry in company_names
+    ]
+    for cname in names:
+        print(cname)
+    
+    return (jsonify(names))
+
+
+
+@app.route("/checkSaveStatus", methods=["POST"])
+def check_save_status():
+    data = request.json
+    articleId = data.get("articleID")
+    user = session["username"]
+    userIDQuery = Users.query.filter_by(email=user).first()
+    userId = userIDQuery.id
+    recordCount = SavedArticles.query.filter_by(userID=userId, articleID=articleId).first() 
+    if recordCount is not None:
+        is_saved = True
+    else:
+        is_saved = False
+    return jsonify({"isFollowed": is_saved})
+
+
+
 
 @app.route('/followedCompanies')
 def followedCompanies():
@@ -236,9 +326,48 @@ def discover():
         "time": entry.publishedTime,
         "icon": entry.bannerImageURL,
         "logo": entry.bannerImageURL,
-        "company": entry.tickerID
+        "company": entry.tickerID,
+        "id": entry.id,
+        'summary': entry.summary,
+        'sentiment': entry.overallSentiment
         }
         for entry in news_query
+    ]
+    return jsonify(feed_entries_json)
+
+@app.route('/fetchgainer')
+def fetchgainer():
+    gainers_query = TopGainers.query.limit(5).all()
+    #news_query = Articles.query.all()
+    feed_entries_json = [
+        {"company": entry.ticker,
+        "value": round(entry.changePercent, 2),
+        }
+        for entry in gainers_query
+    ]
+    return jsonify(feed_entries_json)
+
+@app.route('/fetchloser')
+def fetchloser():
+    losers_query = TopLosers.query.limit(5).all()
+    #news_query = Articles.query.all()
+    feed_entries_json = [
+        {"company": entry.ticker,
+        "value": round(entry.changePercent, 2),
+        }
+        for entry in losers_query
+    ]
+    return jsonify(feed_entries_json)
+
+@app.route('/fetchmostactive')
+def fetchmostactive():
+    active_query = ActivelyTraded.query.limit(5).all()
+    #news_query = Articles.query.all()
+    feed_entries_json = [
+        {"company": entry.ticker,
+        "value": round(entry.volume, 2),
+        }
+        for entry in active_query
     ]
     return jsonify(feed_entries_json)
 
@@ -259,6 +388,13 @@ def retrieveCompany():
     companyQuery = Company.query.filter_by(ticker=capitalTicker).first()
     stockQuery = CurrentStockPrice.query.filter_by(tickerID=capitalTicker).first()
     financialQuery = FinancialData.query.filter_by(tickerID=capitalTicker).first()
+    roundStock = round(stockQuery.stockPrice, 2)
+    roundVolume = round(stockQuery.volumeOfTrade, 2)
+    roundCap = round(financialQuery.marketCap, 2)
+    roundPe = round(financialQuery.pe_ratio, 2)
+    roundEps = round(financialQuery.eps, 2)
+    roundRoe = round(financialQuery.roe, 2)
+
     companyData = [{
         "name": companyQuery.name,
         "ticker": companyQuery.ticker,
@@ -269,12 +405,12 @@ def retrieveCompany():
         "address": companyQuery.address,
         "description": companyQuery.description,
         "timestamp": stockQuery.timestamp,
-        "stockprice": stockQuery.stockPrice,
-        "volume": stockQuery.volumeOfTrade,
-        "marketcap": financialQuery.marketCap,
-        "pe": financialQuery.pe_ratio,
-        "eps": financialQuery.eps,
-        "roe": financialQuery.roe
+        "stockprice": roundStock, 
+        "volume": roundVolume,
+        "marketcap": roundCap,
+        "pe": roundPe,
+        "eps": roundEps,
+        "roe": roundRoe
     }]
     return jsonify(companyData)
 
