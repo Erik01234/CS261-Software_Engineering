@@ -196,7 +196,9 @@ def returnSavedArticles():
         "time": entry.publishedTime,
         "icon": entry.bannerImageURL,
         "logo": entry.bannerImageURL,
-        "company": entry.tickerID
+        "company": entry.tickerID,
+        "summary": entry.summary,
+        "sentiment": entry.overallSentiment
         }
         for entry in news_query
     ]
