@@ -243,8 +243,50 @@ def check_follow_status():
         is_followed = True
     else:
         is_followed = False
-    print(companyId+" followed: "+str(is_followed))
+    #print(companyId+" followed: "+str(is_followed))
     return jsonify({"isFollowed": is_followed})
+
+
+@app.route('/updateCompany', methods=["POST"])
+def updateCompany():
+    data = request.json
+    companyId = data.get("companyId")
+    user = session["username"]
+    userIDQuery = Users.query.filter_by(email=user).first()
+    userId = userIDQuery.id
+    companyId = companyId.upper()
+    '''
+    to update:
+        timestamp;
+        stockprice;
+        volume;
+        marketcap;
+        pe;
+        eps;
+        roe
+    '''
+    data1 = get_company_overview(companyId)
+    data2 = get_current_stock_price_and_volume(companyId)
+    timestamp = datetime.now()
+    if data1:
+        if data2:
+            stockQuery = CurrentStockPrice.query.filter_by(tickerID=companyId).first()
+            stockQuery.stockPrice = data2["Current Price"]
+            stockQuery.volumeOfTrade = data2["Current Volume"]
+            stockQuery.timestamp = timestamp
+
+            financialQuery = FinancialData.query.filter_by(tickerID=companyId).first()
+            financialQuery.marketCap = data1["MarketCapitalization"]
+            financialQuery.pe_ratio = data1["PERatio"]
+            financialQuery.eps = data1["EPS"]
+            financialQuery.roe = data1["ROE"]
+
+            db.session.commit()
+
+    return jsonify({"message": "success"})
+
+
+    
 
 
 
@@ -269,14 +311,13 @@ def similarCompany():
         if len(similarQuery) < 5:
             more_query = Company.query.filter(not_(Company.sector == sector), Company.industry == industry).limit(5-len(similarQuery)).all()
             similarQuery.extend(more_query)
-    company_names = [uc.name for uc in similarQuery]
+    #company_names = [uc.name for uc in similarQuery]
     names = [
-        {"name": entry
+        {"name": entry.name,
+         'ticker': entry.ticker
         }
-        for entry in company_names
+        for entry in similarQuery
     ]
-    for cname in names:
-        print(cname)
     
     return (jsonify(names))
 
