@@ -46,6 +46,8 @@ yag = yagmail.SMTP(gmail_user, gmail_password, host="smtp.gmail.com")
 
 companies = pd.read_csv('SP_500.csv')
 tickers = companies['Symbol'].unique()
+
+
 def frequentUpdates():
 
     #for ticker in tickers:     WAS REMOVED, CAUSED ERRORS WITH THE TG TL MAT tables, coz it was iterating through all 500 and fetching data - takes no parameters though
@@ -95,7 +97,7 @@ def dailyUpdates():
     
 scheduler = BackgroundScheduler()
 scheduler.start()
-scheduler.add_job(frequentUpdates, 'interval', minutes=60)
+scheduler.add_job(frequentUpdates, 'interval', minutes=30)
 scheduler.add_job(dailyUpdates, 'interval', hours=24)
 
 
@@ -374,7 +376,7 @@ def relatedNews():
     userId = userIDQuery.id
     relatedQuery = Articles.query.filter(Articles.tickerID==companyId).limit(3).all()
     names = [
-        {"headline": entry.title,
+        {"headline": entry.title[:100] + "..." if len(entry.title) > 100 else entry.title,
          "source": entry.url,
          "icon": entry.bannerImageURL,
          "summary": entry.summary
@@ -392,9 +394,11 @@ def searchCompany():
     stringd = data.get("string")
     string = stringd.lower()
     #print(string+" IS OUR STRIIIING")
-    companies = Company.query.filter(or_(func.lower(Company.ticker).contains(string), func.lower(Company.name).contains(string))).limit(10).all()
+    companyname_starts_with = Company.query.filter(func.lower(Company.name).startswith(string)).limit(5).all()
+    companyticker_starts_with = Company.query.filter(func.lower(Company.ticker).startswith(string)).limit(5).all()
+    companies_contains = Company.query.filter(or_(func.lower(Company.ticker).contains(string), func.lower(Company.name).contains(string))).limit(5).all()
+    companies = companyname_starts_with + companyticker_starts_with + companies_contains
     if len(companies) == 0:
-        print("-----------------------------")
         return (jsonify({"message": "empty"}))
     for elem in companies:
         print(elem.name+" IS A COMPANY")
