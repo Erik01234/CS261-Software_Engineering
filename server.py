@@ -14,7 +14,7 @@ app.secret_key = 'incredibly secret key of ours'
 from datetime import datetime, timedelta
 from werkzeug import security
 from markupsafe import escape
-from sqlalchemy import and_, or_, not_
+from sqlalchemy import and_, or_, not_, func, desc
 from flask_mail import Mail, Message
 import re #for the signup page
 from itsdangerous import URLSafeTimedSerializer
@@ -27,7 +27,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 srializer = URLSafeTimedSerializer('xyz567')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30) 
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24) 
 import pandas as pd
 #session is going to terminate after 30 minutes
 mail = Mail(app)
@@ -44,17 +44,6 @@ if resetwholedb:
 
 
 
-#if we only want to reset/refill individual tables with data...
-#have to definie a separate function in schema only containing the imports into that specific table only, and import it in this server file
-resetNews = False
-if resetNews:
-    with app.app_context():
-        db.metadata.drop_all(bind=db.engine, tables=[Articles.__table__])
-        db.metadata.create_all(bind=db.engine, tables=[Articles.__table__])
-        db.metadata.drop_all(bind=db.engine, tables=[ArticleTickers.__table__])
-        db.metadata.create_all(bind=db.engine, tables=[ArticleTickers.__table__])
-        fillUpNews()
-
 with open('smtp_credentials.txt', 'r') as file:
     app_pwd = file.read() 
     #app specific password, not my actual gmail password
@@ -68,15 +57,46 @@ companies = pd.read_csv('SP_500.csv')
 tickers = companies['Symbol'].unique()
 def frequentUpdates():
 
-    for ticker in tickers:
-        with app.app_context():
-            currentCurrent = CurrentStockPrice.query.filter_by(tickerID=ticker).first()
+    #for ticker in tickers:     WAS REMOVED, CAUSED ERRORS WITH THE TG TL MAT tables, coz it was iterating through all 500 and fetching data - takes no parameters though
+    with app.app_context():
+        #example on updating the DB instead of dropping and inserting
+        '''currentCurrent = CurrentStockPrice.query.filter_by(tickerID=ticker).first()
             if currentCurrent and currentCurrent.tickerID:
-                stockPriceList = get_current_stock_price_and_volume(ticker)
-                currentCurrent.timestamp = datetime.now()
-                currentCurrent.stockPrice = stockPriceList["Current Price"]
-                currentCurrent.volumeOfTrade = stockPriceList["Current Volume"]
+            stockPriceList = get_current_stock_price_and_volume(ticker)
+            currentCurrent.timestamp = datetime.now()
+            currentCurrent.stockPrice = stockPriceList["Current Price"]
+            currentCurrent.volumeOfTrade = stockPriceList["Current Volume"]
+            db.session.commit()'''
+        db.metadata.drop_all(bind=db.engine, tables=[TopGainers.__table__])
+        db.metadata.create_all(bind=db.engine, tables=[TopGainers.__table__])
+        db.metadata.drop_all(bind=db.engine, tables=[TopLosers.__table__])
+        db.metadata.create_all(bind=db.engine, tables=[TopLosers.__table__])
+        db.metadata.drop_all(bind=db.engine, tables=[ActivelyTraded.__table__])
+        db.metadata.create_all(bind=db.engine, tables=[ActivelyTraded.__table__])
+        topGainersLosersDict = getTopGainersLosers()
+        topGainers = topGainersLosersDict["top_gainers"]
+        topLosers = topGainersLosersDict["top_losers"]
+        activelyTraded = topGainersLosersDict["most_actively_traded"]
+        for gainers in topGainers:
+            if gainers != None and gainers != 0:
+                print(gainers)
+                percent_float = float(gainers["change_percentage"].rstrip('%'))
+                db.session.add(TopGainers(gainers["ticker"], gainers["price"], gainers["change_amount"], percent_float, gainers["volume"]))
                 db.session.commit()
+        
+        for losers in topLosers:
+            if losers != None and losers != 0:
+                print(losers)
+                percent_float = float(losers["change_percentage"].rstrip('%'))
+                db.session.add(TopLosers(losers["ticker"], losers["price"], losers["change_amount"], percent_float, losers["volume"]))
+                db.session.commit()
+
+            for active in activelyTraded:
+                if active != None and active != 0:
+                    print(active)
+                    percent_float = float(active["change_percentage"].rstrip('%'))
+                    db.session.add(ActivelyTraded(active["ticker"], active["price"], active["change_amount"], percent_float, active["volume"]))
+                    db.session.commit()
 
 def dailyUpdates():
     #UPDATE FINANCIAL DATA TABLE
@@ -84,7 +104,7 @@ def dailyUpdates():
     
 scheduler = BackgroundScheduler()
 scheduler.start()
-scheduler.add_job(frequentUpdates, 'interval', hours=24)
+scheduler.add_job(frequentUpdates, 'interval', minutes=60)
 scheduler.add_job(dailyUpdates, 'interval', hours=24)
 
 
@@ -216,7 +236,7 @@ def homepage():
     #news_query = Articles.query.all()
     feed_entries_json = [
         {"headline": entry.title,
-        "source": entry.url,
+        "source": entry.source,
         "time": entry.publishedTime,
         "icon": entry.bannerImageURL,
         "logo": entry.bannerImageURL,
@@ -276,14 +296,44 @@ def updateCompany():
             stockQuery.timestamp = timestamp
 
             financialQuery = FinancialData.query.filter_by(tickerID=companyId).first()
-            financialQuery.marketCap = data1["MarketCapitalization"]
-            financialQuery.pe_ratio = data1["PERatio"]
-            financialQuery.eps = data1["EPS"]
-            financialQuery.roe = data1["ROE"]
+            if data1["MarketCapitalization"] != "None":
+                financialQuery.marketCap = data1["MarketCapitalization"]
+            else:
+                financialQuery.marketCap = 0
+            if data1["PERatio"] != "None":
+                financialQuery.pe_ratio = data1["PERatio"]
+            else:
+                financialQuery.pe_ratio = 0
+            if data1["EPS"] != "None":
+                financialQuery.eps = data1["EPS"]
+            else:
+                financialQuery.eps = 0
+            if data1["ROE"] != "None":
+                financialQuery.roe = data1["ROE"]
+            else:
+                financialQuery.roe = 0
 
             db.session.commit()
 
     return jsonify({"message": "success"})
+
+
+    '''
+    print("Column 3 VALUE IS "+row[3])
+            if row[3] == "None":
+                if row[4] != "": 
+                    #if the marketCap is a None string AND all other values are non-empty (based on our observation), replace it with "0" and keep our other values
+                    db.session.add(FinancialData(row[0], datetime.now(), row[2], 0, row[4], row[5]))
+            elif row[2] == "":
+                if row[3] == "":
+                    #if all values but the ticker and datetime are empty, replace with default, type-specific null values
+                    #COULD/SHOULD SKIP THESE KINDS OF RECORDS
+                    db.session.add(FinancialData(row[0], datetime.now(), 0, 0, 0, 0))
+            else:
+                #else keep everything as is, updating with current timestamp 
+                db.session.add(FinancialData(row[0], datetime.now(), row[2], row[3], row[4], row[5]))
+            db.session.commit()
+    '''
 
 
     
@@ -320,6 +370,81 @@ def similarCompany():
     ]
     
     return (jsonify(names))
+
+
+@app.route('/relatedNews', methods=["POST"])
+def relatedNews():
+    data = request.json
+    companyId = data.get("companyId")
+    companyId = companyId.upper()
+    print(str(companyId)+" is the company ID")
+    user = session["username"]
+    userIDQuery = Users.query.filter_by(email=user).first()
+    userId = userIDQuery.id
+    relatedQuery = Articles.query.filter(Articles.tickerID==companyId).limit(3).all()
+    names = [
+        {"headline": entry.title,
+         "source": entry.url,
+         "icon": entry.bannerImageURL,
+         "summary": entry.summary
+        }
+        for entry in relatedQuery
+    ]
+    
+    return (jsonify(names))
+
+
+
+@app.route('/searchCompany', methods=["POST"])
+def searchCompany():
+    data = request.json
+    stringd = data.get("string")
+    string = stringd.lower()
+    #print(string+" IS OUR STRIIIING")
+    companies = Company.query.filter(or_(func.lower(Company.ticker).contains(string), func.lower(Company.name).contains(string))).limit(10).all()
+    if len(companies) == 0:
+        print("-----------------------------")
+        return (jsonify({"message": "empty"}))
+    for elem in companies:
+        print(elem.name+" IS A COMPANY")
+    companyList = [
+        {"name": entry.name,
+         "ticker": entry.ticker,
+         "sector": entry.sector,
+         "industry": entry.industry
+        }
+        for entry in companies
+    ]
+    return (jsonify(companyList))
+
+@app.route('/searchHeadline', methods=["POST"])
+def searchHeadline():
+    data = request.json
+    stringd = data.get("string")
+    string = stringd.lower()
+    articles = Articles.query.filter(func.lower(Articles.title).contains(string)).order_by(desc(Articles.publishedTime)).limit(20).all()
+    if len(articles) == 0:
+        return (jsonify({"message": "empty"}))
+    for elem in articles:
+        print(elem.title+" IS A TITLE")
+        print(str(elem.id)+" IS THE CORRESPONDING ID")
+    articleList = [
+        {"id": entry.id,
+         "ticker": entry.tickerID,
+         "title": entry.title,
+         "url": entry.url,
+         "source": entry.source,
+         "summary": entry.summary,
+         "image": entry.bannerImageURL,
+         "sentiment": entry.overallSentiment,
+         "time": entry.publishedTime
+        }
+        for entry in articles
+    ]
+    return (jsonify(articleList))
+
+
+
 
 
 
@@ -361,11 +486,13 @@ def followedCompanies():
 
 @app.route('/Discover')
 def discover():
-    news_query = Articles.query.all()
+    num_articles = request.args.get('limit', type=int) or 10
+    offset = request.args.get('offset', type=int) or 0
+    news_query = Articles.query.limit(num_articles).offset(offset).all()
     #news_query = Articles.query.all()
     feed_entries_json = [
         {"headline": entry.title,
-        "source": entry.url,
+        "source": entry.source,
         "time": entry.publishedTime,
         "icon": entry.bannerImageURL,
         "logo": entry.bannerImageURL,
