@@ -1,12 +1,3 @@
-#"flask run" in terminal
-#I have some basic email (username) and password pairs, so you don't have to mess around with tsting the signup verification (me and Rachel will handle it):
-    #Tasneem - Tasneem
-    #Danyal - Danyal
-    #Rachel - Rachel
-    #Michael - Michael
-    #Marios - Marios
-    #rikifekete2003@gmail.com - erikpwd (mine)
-
 import os
 from flask import Flask, request, redirect, render_template, url_for, session, send_from_directory, jsonify
 app = Flask(__name__, static_url_path="/static")
@@ -542,12 +533,6 @@ def fetchmostactive():
     return jsonify(feed_entries_json)
 
 
-'''@app.route('/login')
-def loginpage():
-    if 'username' in session:
-        return redirect('/')
-    return render_template('login.html')'''
-
 
 @app.route('/retrieveCompany', methods=["POST"])
 def retrieveCompany():
@@ -677,13 +662,6 @@ def logout():
     session.clear()
     return jsonify({'message': 'Logout successful'}), 200
 
-@app.route('/signup')
-def signup():
-    if 'username' in session:
-        return redirect('/') #if it is in session, login will redirect them to main page, so no need to change in 2 places if modifying
-    else:
-        return render_template('signup.html')
-    
 
 @app.route('/submitsignup', methods=['POST', 'GET'])
 def submitsignup():
@@ -790,15 +768,3 @@ def confirmemail(token):
   users.isactivated = 1
   db.session.commit()
   return '<p>Yay, {}, you have just activated your email!</p><form action="/"><input type="submit" value="Return to login"></form>'.format(email)
-
-'''
-
-/aboutCompany
-/articleAnalysis
-/followedCompanies
-/savedArticles
-/loginPage
-/homePage
-/navbar
-
-'''
