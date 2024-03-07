@@ -2,7 +2,7 @@ import os
 from flask import Flask, request, redirect, render_template, url_for, session, send_from_directory, jsonify
 app = Flask(__name__, static_url_path="/static")
 app.secret_key = 'incredibly secret key of ours'
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from werkzeug import security
 from markupsafe import escape
 from sqlalchemy import and_, or_, not_, func, desc
@@ -48,7 +48,7 @@ companies = pd.read_csv('SP_500.csv')
 tickers = companies['Symbol'].unique()
 
 
-def frequentUpdates():
+def dailyUpdates():
 
     #for ticker in tickers:     WAS REMOVED, CAUSED ERRORS WITH THE TG TL MAT tables, coz it was iterating through all 500 and fetching data - takes no parameters though
     with app.app_context():
@@ -60,6 +60,117 @@ def frequentUpdates():
             currentCurrent.stockPrice = stockPriceList["Current Price"]
             currentCurrent.volumeOfTrade = stockPriceList["Current Volume"]
             db.session.commit()'''
+        
+        today = date.today()
+        today_articles = Articles.query.filter(func.date(Articles.publishedTime) == today).all()
+        # Count occurrences of tickers
+        ticker_count = {}
+        for article in today_articles:
+            ticker = article.tickerID
+            if ticker in ticker_count:
+                ticker_count[ticker] += 1
+            else:
+                ticker_count[ticker] = 1
+        most_common_ticker = max(ticker_count, key=ticker_count.get)
+        print(most_common_ticker+" IS THE MOST WRITTEN COMPANY")
+
+        bearish_count = {}
+        for article in today_articles:
+            ticker = article.tickerID
+            sentiment = article.overallSentiment
+            if sentiment == "Somewhat-Bearish":
+                if ticker in bearish_count:
+                    bearish_count[ticker] += 1
+                else:
+                    bearish_count[ticker] = 1
+        
+        most_bearish_ticker = max(bearish_count, key=bearish_count.get)
+        print(most_bearish_ticker+" IS THE MOST BEARISH COMPANY")
+
+        bullish_count = {}
+        for article in today_articles:
+            ticker = article.tickerID
+            sentiment = article.overallSentiment
+            if sentiment == "Bullish":
+                if ticker in bullish_count:
+                    bullish_count[ticker] += 1
+                else:
+                    bullish_count[ticker] = 1
+        
+        most_bullish_ticker = max(bullish_count, key=bullish_count.get)
+        print(most_bullish_ticker+" IS THE MOST BULLISH COMPANY")
+
+
+        userIDsQuery = Users.query.all() 
+        #first get all Users
+        for user in userIDsQuery:
+            #iterate through the rows (users)
+            userid = user.id
+            usernm = user.email
+            print(str(usernm))
+            print(usernm)
+            #grab the user's ID
+            followed_companies = [uc.company for uc in UserCompany.query.filter(UserCompany.user == userid)]
+            #get a followed companies list
+            userArticles = []
+            for company in followed_companies:
+                bullish_articles = Articles.query.filter(Articles.tickerID == company, Articles.overallSentiment == "Bullish").order_by(desc(Articles.publishedTime)).limit(5).all()
+                if len(bullish_articles) > 0:
+                    userArticles.extend(bullish_articles)
+                bearish_articles = Articles.query.filter(Articles.tickerID == company, or_(Articles.overallSentiment == "Bearish", Articles.overallSentiment == "Somewhat-Bearish")).order_by(desc(Articles.publishedTime)).limit(5).all()
+                if len(bearish_articles) > 0:
+                    userArticles.extend(bearish_articles)
+            user_articles_data = [{"headline": article.title, "url": article.url} for article in userArticles]
+            print(user_articles_data)
+
+            regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
+            def check(usernm):
+                if(re.fullmatch(regex, str(usernm))):
+                    return True
+                else:
+                    return False
+            check(user)
+            if check(usernm):
+                if not user_articles_data:
+                    msgbody = f"""
+                    <h1>Hello {usernm}! Your Daily Updates Are Here:</h1>
+                    <h2>Global Stats</h2>
+                    <ul>
+                    <li>Most written company: {most_common_ticker}</li>
+                    <li>Most bullish company: {most_bullish_ticker}</li>
+                    <li>Most bearish company: {most_bearish_ticker}</li>
+                    </ul>
+                    <p>Regards, <a href="localhost:3000">CoRNIA</a></p>
+                    """
+                    message = f"Subject: Updates\n\n{msgbody}"
+                    yag.send(to=usernm, contents=[message])
+                else:
+                    msgbody = f"""
+                    <html>
+                        <body>
+                            <h1>Hello There! Your Daily Updates Are Here:</h1>
+                            <h2>Here are some articles for you:</h2>
+                            {''.join([
+                                f'<div class="article"><div class="headline"><a href="{article["url"]}">{article["headline"]}</a></div></div>'
+                                for article in user_articles_data
+                            ])}
+                            <h2>Global Stats</h2>
+                            <ul>
+                                <li>Most written company: {most_common_ticker}</li>
+                                <li>Most bullish company: {most_bullish_ticker}</li>
+                                <li>Most bearish company: {most_bearish_ticker}</li>
+                            </ul>
+                            <p>Regards, <a href="localhost:3000">CoRNIA</a></p>
+                        </body>
+                    </html>
+                    """
+                    message = f"Subject: Updates\n\n{msgbody}"
+                    yag.send(to=usernm, contents=[message])
+
+
+def frequentUpdates(): 
+    with app.app_context():
+        #UNCOMMENT AFTER TESTING:
         db.metadata.drop_all(bind=db.engine, tables=[TopGainers.__table__])
         db.metadata.create_all(bind=db.engine, tables=[TopGainers.__table__])
         db.metadata.drop_all(bind=db.engine, tables=[TopLosers.__table__])
@@ -90,14 +201,10 @@ def frequentUpdates():
                     percent_float = float(active["change_percentage"].rstrip('%'))
                     db.session.add(ActivelyTraded(active["ticker"], active["price"], active["change_amount"], percent_float, active["volume"]))
                     db.session.commit()
-
-def dailyUpdates():
-    #UPDATE FINANCIAL DATA TABLE
-    print("Daily update initiated.")
     
 scheduler = BackgroundScheduler()
 scheduler.start()
-scheduler.add_job(frequentUpdates, 'interval', minutes=30)
+scheduler.add_job(frequentUpdates, 'interval', minutes=5)
 scheduler.add_job(dailyUpdates, 'interval', hours=24)
 
 

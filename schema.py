@@ -411,8 +411,10 @@ class SavedArticles(db.Model):
 
 def dbinit():
     pwdadmin = generate_password_hash("admin")
+    pwderik = generate_password_hash("fasz")
     user_list = [
-        Users("admin", pwdadmin, "x", 1)
+        Users("admin", pwdadmin, "x", 1),
+        Users("rikifekete2003@gmail.com", pwderik, "x", 1)
         ]
     db.session.add_all(user_list)
     db.session.commit()
