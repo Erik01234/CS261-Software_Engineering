@@ -175,12 +175,12 @@ def unfollow():
 def unsaveArticle():
     try:
         data = request.json
-        headline = data.get('headline')
-        print(headline)
+        id = data.get('headline')
+        print(id)
         user = session["username"]
         userIDQuery = Users.query.filter_by(email=user).first()
         userIDQuery = userIDQuery.id
-        articleIDQuery = Articles.query.filter_by(title=headline).first()
+        articleIDQuery = Articles.query.filter_by(id=id).first()
         articleID = articleIDQuery.id
         print(userIDQuery)
         print(articleID)
@@ -205,13 +205,15 @@ def returnSavedArticles():
     news_query = Articles.query.filter(Articles.id.in_(newsIDsFollowed)).all() 
     feed_entries_json = [
         {"headline": entry.title,
-        "source": entry.url,
+        "source": entry.source,
         "time": entry.publishedTime,
         "icon": entry.bannerImageURL,
         "logo": entry.bannerImageURL,
         "company": entry.tickerID,
         "summary": entry.summary,
-        "sentiment": entry.overallSentiment
+        "sentiment": entry.overallSentiment,
+        "url": entry.url,
+        "id": entry.id
         }
         for entry in news_query
     ]
@@ -225,7 +227,7 @@ def homepage():
     userIDQuery = userIDQuery.id
     usercompanyquery = UserCompany.query.filter_by(user=userIDQuery).all()
     company_tickers_followed = [uc.company for uc in usercompanyquery]
-    news_query = Articles.query.filter(Articles.tickerID.in_(company_tickers_followed)).all()
+    news_query = Articles.query.filter(Articles.tickerID.in_(company_tickers_followed)).order_by(desc(Articles.publishedTime)).all()
     #news_query = Articles.query.all()
     feed_entries_json = [
         {"headline": entry.title,
@@ -379,7 +381,8 @@ def relatedNews():
         {"headline": entry.title[:100] + "..." if len(entry.title) > 100 else entry.title,
          "source": entry.url,
          "icon": entry.bannerImageURL,
-         "summary": entry.summary
+         "summary": entry.summary,
+         "id": entry.id
         }
         for entry in relatedQuery
     ]
@@ -394,10 +397,13 @@ def searchCompany():
     stringd = data.get("string")
     string = stringd.lower()
     #print(string+" IS OUR STRIIIING")
+    companyname_starts_with = Company.query.filter(or_(func.lower(Company.name).startswith(string), func.lower(Company.ticker).contains(string))).limit(5).all()
+    companies = companyname_starts_with
+    ''' This causes duplicates:
     companyname_starts_with = Company.query.filter(func.lower(Company.name).startswith(string)).limit(5).all()
-    companyticker_starts_with = Company.query.filter(func.lower(Company.ticker).startswith(string)).limit(5).all()
     companies_contains = Company.query.filter(or_(func.lower(Company.ticker).contains(string), func.lower(Company.name).contains(string))).limit(5).all()
-    companies = companyname_starts_with + companyticker_starts_with + companies_contains
+    companies = companyname_starts_with + companies_contains
+    '''
     if len(companies) == 0:
         return (jsonify({"message": "empty"}))
     for elem in companies:
@@ -417,7 +423,7 @@ def searchHeadline():
     data = request.json
     stringd = data.get("string")
     string = stringd.lower()
-    articles = Articles.query.filter(func.lower(Articles.title).contains(string)).order_by(desc(Articles.publishedTime)).limit(20).all()
+    articles = Articles.query.filter(func.lower(Articles.title).contains(string)).order_by(desc(Articles.publishedTime)).limit(15).all()
     if len(articles) == 0:
         return (jsonify({"message": "empty"}))
     for elem in articles:
@@ -483,7 +489,7 @@ def followedCompanies():
 def discover():
     num_articles = request.args.get('limit', type=int) or 10
     offset = request.args.get('offset', type=int) or 0
-    news_query = Articles.query.limit(num_articles).offset(offset).all()
+    news_query = Articles.query.order_by(desc(Articles.publishedTime)).limit(num_articles).offset(offset).all()
     #news_query = Articles.query.all()
     feed_entries_json = [
         {"headline": entry.title,
@@ -494,7 +500,8 @@ def discover():
         "company": entry.tickerID,
         "id": entry.id,
         'summary': entry.summary,
-        'sentiment': entry.overallSentiment
+        'sentiment': entry.overallSentiment,
+        "url": entry.url
         }
         for entry in news_query
     ]

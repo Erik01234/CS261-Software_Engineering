@@ -477,7 +477,7 @@ def dbinit():
 
 
     
-    for tickerStock in tickers[:50]:
+    for tickerStock in tickers:
         stockPriceList = get_current_stock_price_and_volume(tickerStock)
         if stockPriceList != 0:
             db.session.add(CurrentStockPrice(tickerStock, datetime.now(), stockPriceList["Current Price"], stockPriceList["Current Volume"]))
@@ -485,7 +485,6 @@ def dbinit():
     
     
     # Use the function and store the result
-    '''print("---- ---")
     split_markets = split_primary_exchanges(get_global_market())
     marketList = split_markets
     for market in marketList:
@@ -496,7 +495,6 @@ def dbinit():
             db.session.add(GlobalMarket(market["market_type"], market["region"], market["primary_exchanges"], open_time, close_time, market["current_status"], market["notes"]))
             db.session.commit()
             print("Inserted into Global Markets table!")
-    '''
     
     topGainersLosersDict = getTopGainersLosers()
     topGainers = topGainersLosersDict["top_gainers"]
@@ -525,7 +523,7 @@ def dbinit():
     
     
             
-    for tickerNews in tickers[:50]:
+    for tickerNews in tickers:
         news_item = get_news(tickerNews, '', 'RELEVANCE', 1, '5')
         if news_item:
             for newsEntry in news_item:
