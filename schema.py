@@ -220,9 +220,11 @@ class Company(db.Model):
     country = db.Column(db.String)
     address = db.Column(db.Text())
     description = db.Column(db.Text())
+    projection = db.Column(db.Text())
 
 
-    def __init__(self, ticker, name, sector, industry, exchange, currency, country, address, description):
+
+    def __init__(self, ticker, name, sector, industry, exchange, currency, country, address, description, projection):
         self.name = name
         self.ticker = ticker
         self.sector = sector
@@ -232,6 +234,7 @@ class Company(db.Model):
         self.country = country
         self.address = address
         self.description = description
+        self.projection = projection
 
 class UserCompany(db.Model): 
     #constant updates - dynamic
@@ -441,7 +444,7 @@ def dbinit():
         #read static company data from the companies.csv file
         csvreader = csv.reader(file)
         for row in csvreader:
-            db.session.add(Company(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]))
+            db.session.add(Company(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9]))
             db.session.commit()
 
     

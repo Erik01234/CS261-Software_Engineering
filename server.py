@@ -5,7 +5,7 @@ app.secret_key = 'incredibly secret key of ours'
 from datetime import datetime, timedelta, date
 from werkzeug import security
 from markupsafe import escape
-from sqlalchemy import and_, or_, not_, func, desc
+from sqlalchemy import and_, or_, not_, func, desc, asc
 from flask_mail import Mail, Message
 import re #for the signup page
 from itsdangerous import URLSafeTimedSerializer
@@ -20,6 +20,9 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24) 
 import pandas as pd
+import signal
+import sys
+import json
 #session is going to terminate after 30 minutes
 mail = Mail(app)
 db.init_app(app)
@@ -377,16 +380,6 @@ def updateCompany():
     userIDQuery = Users.query.filter_by(email=user).first()
     userId = userIDQuery.id
     companyId = companyId.upper()
-    '''
-    to update:
-        timestamp;
-        stockprice;
-        volume;
-        marketcap;
-        pe;
-        eps;
-        roe
-    '''
     data1 = get_company_overview(companyId)
     data2 = get_current_stock_price_and_volume(companyId)
     timestamp = datetime.now()
@@ -419,28 +412,7 @@ def updateCompany():
 
     return jsonify({"message": "success"})
 
-
-    '''
-    print("Column 3 VALUE IS "+row[3])
-            if row[3] == "None":
-                if row[4] != "": 
-                    #if the marketCap is a None string AND all other values are non-empty (based on our observation), replace it with "0" and keep our other values
-                    db.session.add(FinancialData(row[0], datetime.now(), row[2], 0, row[4], row[5]))
-            elif row[2] == "":
-                if row[3] == "":
-                    #if all values but the ticker and datetime are empty, replace with default, type-specific null values
-                    #COULD/SHOULD SKIP THESE KINDS OF RECORDS
-                    db.session.add(FinancialData(row[0], datetime.now(), 0, 0, 0, 0))
-            else:
-                #else keep everything as is, updating with current timestamp 
-                db.session.add(FinancialData(row[0], datetime.now(), row[2], row[3], row[4], row[5]))
-            db.session.commit()
-    '''
-
-
-    
-
-
+   
 
 @app.route('/similarCompany', methods=["POST"])
 def similarCompany():
@@ -483,7 +455,7 @@ def relatedNews():
     user = session["username"]
     userIDQuery = Users.query.filter_by(email=user).first()
     userId = userIDQuery.id
-    relatedQuery = Articles.query.filter(Articles.tickerID==companyId).limit(3).all()
+    relatedQuery = Articles.query.filter(Articles.tickerID==companyId).order_by(desc(Articles.publishedTime)).limit(3).all()
     names = [
         {"headline": entry.title[:100] + "..." if len(entry.title) > 100 else entry.title,
          "source": entry.url,
@@ -598,6 +570,68 @@ def discover():
     offset = request.args.get('offset', type=int) or 0
     news_query = Articles.query.order_by(desc(Articles.publishedTime)).limit(num_articles).offset(offset).all()
     #news_query = Articles.query.all()
+    merged_entries = {}
+    #print("MERGED ENTRIES SESSION CONTAINS: "+str(merged_entries))
+
+    '''
+    session method could theoretically work BUT:
+        how does it merge About Company buttons for a headline corresponding to multiple companies (tickers) if, for one, 
+        offset is 0 (loaded initially), and for the other, offset is, say, 10? If session implementation is correct, it won't just "add"
+        the company name ALSO corresponding to a previously shown article to that article, but rather will just ignore it
+
+    THIS RIGHT HERE is the current possible best implementation within the time frame, other requirements and 
+    the unimportance of perfecting this already good implementation
+    '''
+    
+    for entry in news_query:
+        article_key = (entry.title)
+        if article_key in merged_entries or entry.id in merged_entries:
+            # If the article key exists, append the ticker
+            merged_entries[article_key]['company'].append(entry.tickerID)
+            #count = 0
+            #for elem in merged_entries[article_key]['company']:
+                #count = count+1
+                #print(str(count)+"th ELEM IS "+elem)
+            #count = 0
+        else:
+            logopath = "cornialogo.png"
+            if entry.bannerImageURL is not None or entry.bannerImageURL == "":
+                merged_entries[article_key] = {
+                    "headline": entry.title,
+                    "source": entry.source,
+                    "time": entry.publishedTime,
+                    "icon": entry.bannerImageURL,
+                    "logo": entry.bannerImageURL,
+                    "company": [entry.tickerID],
+                    "id": entry.id,
+                    'summary': entry.summary,
+                    'sentiment': entry.overallSentiment,
+                    "url": entry.url
+                }
+            else:
+                print("IMAGE FOR ENTRY ID: "+str(entry.id)+" IS NONEXISTENT. PLACING UNIQUE IMAGE")
+                merged_entries[article_key] = {
+                    "headline": entry.title,
+                    "source": entry.source,
+                    "time": entry.publishedTime,
+                    "icon": "https://cdn.pixabay.com/photo/2013/07/12/19/16/newspaper-154444_960_720.png",
+                    "logo": "https://cdn.pixabay.com/photo/2013/07/12/19/16/newspaper-154444_960_720.png",
+                    "company": [entry.tickerID],
+                    "id": entry.id,
+                    'summary': entry.summary,
+                    'sentiment': entry.overallSentiment,
+                    "url": entry.url
+                }
+    #print("MERGED ENTRIES AFTER OFFSET "+str(offset)+" IS "+str(merged_entries))
+    feed_entries_json = list(merged_entries.values())
+    return jsonify(feed_entries_json)
+
+
+    '''
+    num_articles = request.args.get('limit', type=int) or 10
+    offset = request.args.get('offset', type=int) or 0
+    news_query = Articles.query.order_by(desc(Articles.publishedTime)).limit(num_articles).offset(offset).all()
+    #news_query = Articles.query.all()
     feed_entries_json = [
         {"headline": entry.title,
         "source": entry.source,
@@ -613,6 +647,7 @@ def discover():
         for entry in news_query
     ]
     return jsonify(feed_entries_json)
+    '''
 
 @app.route('/fetchgainer')
 def fetchgainer():
@@ -624,6 +659,9 @@ def fetchgainer():
         }
         for entry in gainers_query
     ]
+    print("something")
+    for elem in feed_entries_json:
+        print(str(elem))
     return jsonify(feed_entries_json)
 
 @app.route('/fetchloser')
@@ -683,7 +721,8 @@ def retrieveCompany():
         "marketcap": roundCap,
         "pe": roundPe,
         "eps": roundEps,
-        "roe": roundRoe
+        "roe": roundRoe,
+        "trend": companyQuery.projection
     }]
     return jsonify(companyData)
 
