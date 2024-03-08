@@ -669,67 +669,193 @@ def followedCompanies():
     ]
     return jsonify(company_entries_json)
 
-@app.route('/Discover')
+@app.route('/Discover', methods = ['POST', 'GET'])
 def discover():
-    num_articles = request.args.get('limit', type=int) or 10
-    offset = request.args.get('offset', type=int) or 0
-    news_query = Articles.query.order_by(desc(Articles.publishedTime)).limit(num_articles).offset(offset).all()
-    #news_query = Articles.query.all()
-    merged_entries = {}
-    #print("MERGED ENTRIES SESSION CONTAINS: "+str(merged_entries))
-
-    '''
-    session method could theoretically work BUT:
-        how does it merge About Company buttons for a headline corresponding to multiple companies (tickers) if, for one, 
-        offset is 0 (loaded initially), and for the other, offset is, say, 10? If session implementation is correct, it won't just "add"
-        the company name ALSO corresponding to a previously shown article to that article, but rather will just ignore it
-
-    THIS RIGHT HERE is the current possible best implementation within the time frame, other requirements and 
-    the unimportance of perfecting this already good implementation
-    '''
-    
-    for entry in news_query:
-        article_key = (entry.title)
-        if article_key in merged_entries or entry.id in merged_entries:
-            # If the article key exists, append the ticker
-            merged_entries[article_key]['company'].append(entry.tickerID)
-            #count = 0
-            #for elem in merged_entries[article_key]['company']:
-                #count = count+1
-                #print(str(count)+"th ELEM IS "+elem)
-            #count = 0
+    if request. method == 'POST':
+        data = request.json
+        true_values = data.get('trueValues', [])
+        offset = data.get('trimLengthOffset')
+        print(str(offset)+" IS THE OFFSET")
+        category = [
+        "Business",
+        "Companies",
+        "Earnings",
+        "Economy",
+        "Markets",
+        "News",
+        "Top News",
+        "Top Stories",
+        "Trading",
+        "General",
+        "n/a",
+        ]
+        sector = [
+            "ENERGY & TRANSPORTATION",
+            "FINANCE",
+            "LIFE SCIENCES",
+            "MANUFACTURING",
+            "REAL ESTATE & CONSTRUCTION",
+            "TECHNOLOGY",
+            "TRADE & SERVICES"
+        ]
+        sectorlist = []
+        categorylist = []
+        publishDate = 0 #0 was asc, 1 was desc
+        for item in true_values:
+            key = item.get('key')
+            index = item.get('index')
+            if key == "category":
+                if category[index] == "General":
+                    categorylist.append("n/a")
+                    categorylist.append("GoogleRSS")
+                    categorylist.append("BusinessGoogleRSS")
+                categorylist.append(category[index])
+                
+            elif key == "sector":
+                sectorlist.append(sector[index])
+            elif key == "publishDate":
+                publishDate = index
+        for elem2 in categorylist:
+            print(elem2)
+        for elem in sectorlist:
+            print(elem)
+        print(publishDate)
+        
+        sectorQuery = Company.query.filter(Company.sector.in_(sectorlist)).all()
+        tickerIDForSector = [comp.ticker for comp in sectorQuery]
+        #for elem2 in tickerIDForSector:
+            #print(elem2)
+        if publishDate == 0:
+            sectorQueryArticles = Articles.query.filter(and_(Articles.tickerID.in_(tickerIDForSector), Articles.category.in_(categorylist))).order_by(asc(Articles.publishedTime)).offset(0).all()
         else:
-            logopath = "cornialogo.png"
-            if entry.bannerImageURL is not None or entry.bannerImageURL == "":
-                merged_entries[article_key] = {
-                    "headline": entry.title,
-                    "source": entry.source,
-                    "time": entry.publishedTime,
-                    "icon": entry.bannerImageURL,
-                    "logo": entry.bannerImageURL,
-                    "company": [entry.tickerID],
-                    "id": entry.id,
-                    'summary': entry.summary,
-                    'sentiment': entry.overallSentiment,
-                    "url": entry.url
-                }
+            sectorQueryArticles = Articles.query.filter(and_(Articles.tickerID.in_(tickerIDForSector), Articles.category.in_(categorylist))).order_by(desc(Articles.publishedTime)).offset(0).all()
+
+        counter = 0
+        for elem in sectorQueryArticles:
+            counter = counter + 1
+        print(counter)
+
+        if sectorlist == []:
+            if categorylist == []:
+                if publishDate == 1:
+                    sectorQueryArticles = Articles.query.order_by(desc(Articles.publishedTime)).offset(0).all()
+                else:
+                    sectorQueryArticles = Articles.query.order_by(asc(Articles.publishedTime)).offset(0).all()
+
+        yolo = [ 
+            {   "headline": entry.title,
+                "source": entry.source,
+                "time": entry.publishedTime,
+                "icon": entry.bannerImageURL,
+                "logo": entry.bannerImageURL,
+                "company": [entry.tickerID],
+                "id": entry.id,
+                'summary': entry.summary,
+                'sentiment': entry.overallSentiment,
+                "url": entry.url
+            }
+            for entry in sectorQueryArticles
+        ]
+            
+        merged_entries = {}
+        for entry in sectorQueryArticles:
+            article_key = (entry.title)
+            if article_key in merged_entries or entry.id in merged_entries:
+                # If the article key exists, append the ticker
+                merged_entries[article_key]['company'].append(entry.tickerID)
             else:
-                print("IMAGE FOR ENTRY ID: "+str(entry.id)+" IS NONEXISTENT. PLACING UNIQUE IMAGE")
-                merged_entries[article_key] = {
-                    "headline": entry.title,
-                    "source": entry.source,
-                    "time": entry.publishedTime,
-                    "icon": "https://cdn.pixabay.com/photo/2013/07/12/19/16/newspaper-154444_960_720.png",
-                    "logo": "https://cdn.pixabay.com/photo/2013/07/12/19/16/newspaper-154444_960_720.png",
-                    "company": [entry.tickerID],
-                    "id": entry.id,
-                    'summary': entry.summary,
-                    'sentiment': entry.overallSentiment,
-                    "url": entry.url
-                }
-    #print("MERGED ENTRIES AFTER OFFSET "+str(offset)+" IS "+str(merged_entries))
-    feed_entries_json = list(merged_entries.values())
-    return jsonify(feed_entries_json)
+                if entry.bannerImageURL is not None or entry.bannerImageURL == "":
+                    merged_entries[article_key] = {
+                        "headline": entry.title,
+                        "source": entry.source,
+                        "time": entry.publishedTime,
+                        "icon": entry.bannerImageURL,
+                        "logo": entry.bannerImageURL,
+                        "company": [entry.tickerID],
+                        "id": entry.id,
+                        'summary': entry.summary,
+                        'sentiment': entry.overallSentiment,
+                        "url": entry.url
+                    }
+                else:
+                    print("IMAGE FOR ENTRY ID: "+str(entry.id)+" IS NONEXISTENT. PLACING UNIQUE IMAGE")
+                    merged_entries[article_key] = {
+                        "headline": entry.title,
+                        "source": entry.source,
+                        "time": entry.publishedTime,
+                        "icon": "https://cdn.pixabay.com/photo/2013/07/12/19/16/newspaper-154444_960_720.png",
+                        "logo": "https://cdn.pixabay.com/photo/2013/07/12/19/16/newspaper-154444_960_720.png",
+                        "company": [entry.tickerID],
+                        "id": entry.id,
+                        'summary': entry.summary,
+                        'sentiment': entry.overallSentiment,
+                        "url": entry.url
+                    }
+        #print("MERGED ENTRIES AFTER OFFSET "+str(offset)+" IS "+str(merged_entries))
+        feed_entries_json = list(merged_entries.values())
+        xd = 0
+        for elem in feed_entries_json:
+            xd = xd + 1
+        print(str(xd)+" IS THE FINAL COUNTER")
+        return jsonify(feed_entries_json)
+    else:
+        num_articles = request.args.get('limit', type=int) or 10
+        offset = request.args.get('offset', type=int) or 0
+        news_query = Articles.query.order_by(desc(Articles.publishedTime)).limit(num_articles).offset(offset).all()
+        merged_entries = {}
+
+        '''
+        session method could theoretically work BUT:
+            how does it merge About Company buttons for a headline corresponding to multiple companies (tickers) if, for one, 
+            offset is 0 (loaded initially), and for the other, offset is, say, 10? If session implementation is correct, it won't just "add"
+            the company name ALSO corresponding to a previously shown article to that article, but rather will just ignore it
+
+        THIS RIGHT HERE is the current possible best implementation within the time frame, other requirements and 
+        the unimportance of perfecting this already good implementation
+        '''
+        
+        for entry in news_query:
+            article_key = (entry.title)
+            if article_key in merged_entries or entry.id in merged_entries:
+                # If the article key exists, append the ticker
+                merged_entries[article_key]['company'].append(entry.tickerID)
+                #count = 0
+                #for elem in merged_entries[article_key]['company']:
+                    #count = count+1
+                    #print(str(count)+"th ELEM IS "+elem)
+                #count = 0
+            else:
+                logopath = "cornialogo.png"
+                if entry.bannerImageURL is not None or entry.bannerImageURL == "":
+                    merged_entries[article_key] = {
+                        "headline": entry.title,
+                        "source": entry.source,
+                        "time": entry.publishedTime,
+                        "icon": entry.bannerImageURL,
+                        "logo": entry.bannerImageURL,
+                        "company": [entry.tickerID],
+                        "id": entry.id,
+                        'summary': entry.summary,
+                        'sentiment': entry.overallSentiment,
+                        "url": entry.url
+                    }
+                else:
+                    print("IMAGE FOR ENTRY ID: "+str(entry.id)+" IS NONEXISTENT. PLACING UNIQUE IMAGE")
+                    merged_entries[article_key] = {
+                        "headline": entry.title,
+                        "source": entry.source,
+                        "time": entry.publishedTime,
+                        "icon": "https://cdn.pixabay.com/photo/2013/07/12/19/16/newspaper-154444_960_720.png",
+                        "logo": "https://cdn.pixabay.com/photo/2013/07/12/19/16/newspaper-154444_960_720.png",
+                        "company": [entry.tickerID],
+                        "id": entry.id,
+                        'summary': entry.summary,
+                        'sentiment': entry.overallSentiment,
+                        "url": entry.url
+                    }
+        #print("MERGED ENTRIES AFTER OFFSET "+str(offset)+" IS "+str(merged_entries))
+        feed_entries_json = list(merged_entries.values())
+        return jsonify(feed_entries_json)
 
 
 @app.route('/fetchgainer')
