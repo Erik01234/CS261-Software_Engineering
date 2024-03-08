@@ -5,7 +5,7 @@ app.secret_key = 'incredibly secret key of ours'
 from datetime import datetime, timedelta, date
 from werkzeug import security
 from markupsafe import escape
-from sqlalchemy import and_, or_, not_, func, desc, asc
+from sqlalchemy import and_, or_, not_, func, desc, asc, distinct
 from flask_mail import Mail, Message
 import re #for the signup page
 from itsdangerous import URLSafeTimedSerializer
@@ -211,6 +211,14 @@ scheduler.add_job(frequentUpdates, 'interval', minutes=5)
 scheduler.add_job(dailyUpdates, 'interval', hours=24)
 
 
+def custom_sanitizer(input_from_html):
+    chars_to_sanitize = re.compile(r'<[^>]*>')
+    sql_operators = ['SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'INSERT', 'UPDATE', 'DELETE', 'DROP', 'UNION', 'LIMIT']
+    sql_symbols = ['=', '<', '>', '!', ';', "'", '"', '--', '/*', '*/', '&&', '||']
+    combined_pattern = '|'.join([chars_to_sanitize.pattern] + [re.escape(op) for op in sql_operators] + [re.escape(sym) for sym in sql_symbols])
+    sanitized_html = re.sub(combined_pattern, '', input_from_html)
+    return sanitized_html
+
 @app.route('/checkLoggedIn')
 def check_logged_in():
     if 'username' in session:
@@ -278,6 +286,100 @@ def unfollow():
     except Exception as e:
         return jsonify({'message': str(e)}), 500
     
+
+
+@app.route('/fetchFilterSector')
+def fetchSector():
+    try:
+        sectors_query = Company.query.with_entities(Company.sector).distinct().order_by(asc(Company.sector)).all()
+        sectors_list = [sector[0] for sector in sectors_query]
+        print(sectors_list)
+        return jsonify(sectors_list)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    
+
+@app.route('/fetchFilterCategory')
+def fetchCategory():
+    try:
+        category_query = Articles.query.with_entities(Articles.category).distinct().order_by(asc(Articles.category)).all()
+        newlist = []
+        for elem in category_query:
+            if elem.category == "n/a" and elem not in newlist:
+                newlist.append("Misc")
+            elif elem.category != "GoogleRSS" and elem.category != "BusinessGoogleRSS":
+                if elem not in newlist:
+                    newlist.append(elem.category)
+        return jsonify(newlist)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    
+
+
+@app.route('/sendTrueValues', methods=["POST"])
+def sendTrueValues():
+    data = request.json
+    true_values = data.get('trueValues', [])
+    category = [
+    "Business",
+    "Companies",
+    "Earnings",
+    "Economy",
+    "Markets",
+    "News",
+    "Top News",
+    "Top Stories",
+    "Trading",
+    "General",
+    "n/a",
+    ]
+    sector = [
+        "ENERGY & TRANSPORTATION",
+        "FINANCE",
+        "LIFE SCIENCES",
+        "MANUFACTURING",
+        "REAL ESTATE & CONSTRUCTION",
+        "TECHNOLOGY",
+        "TRADE & SERVICES"
+    ]
+    sectorlist = []
+    categorylist = []
+    publishDate = 0 #0 was asc, 1 was desc
+    for item in true_values:
+        key = item.get('key')
+        index = item.get('index')
+        if key == "category":
+            if category[index] == "General":
+                categorylist.append("n/a")
+                categorylist.append("GoogleRSS")
+                categorylist.append("BusinessGoogleRSS")
+            categorylist.append(category[index])
+            
+        elif key == "sector":
+            sectorlist.append(sector[index])
+        elif key == "publishDate":
+            publishDate = index
+    for elem2 in categorylist:
+        print(elem2)
+    for elem in sectorlist:
+        print(elem)
+    print(publishDate)
+    
+    sectorQuery = Company.query.filter(Company.sector.in_(sectorlist)).all()
+    tickerIDForSector = [comp.ticker for comp in sectorQuery]
+    #for elem2 in tickerIDForSector:
+        #print(elem2)
+    sectorQueryArticles = Articles.query.filter(and_(Articles.tickerID.in_(tickerIDForSector), Articles.category.in_(categorylist))).all()
+
+    counter = 0
+    for elem in sectorQueryArticles:
+        counter = counter + 1
+    print(counter)
+
+    
+
+    return jsonify(message="True values received successfully"), 200
+
 
     
 
@@ -475,6 +577,8 @@ def searchCompany():
     data = request.json
     stringd = data.get("string")
     string = stringd.lower()
+    string = custom_sanitizer(string)
+    print(string+" IS OUR STRING")
     #print(string+" IS OUR STRIIIING")
     companyname_starts_with = Company.query.filter(or_(func.lower(Company.name).startswith(string), func.lower(Company.ticker).contains(string))).limit(5).all()
     companies = companyname_starts_with
@@ -502,6 +606,7 @@ def searchHeadline():
     data = request.json
     stringd = data.get("string")
     string = stringd.lower()
+    string = custom_sanitizer(string)
     articles = Articles.query.filter(func.lower(Articles.title).contains(string)).order_by(desc(Articles.publishedTime)).limit(15).all()
     if len(articles) == 0:
         return (jsonify({"message": "empty"}))
@@ -626,28 +731,6 @@ def discover():
     feed_entries_json = list(merged_entries.values())
     return jsonify(feed_entries_json)
 
-
-    '''
-    num_articles = request.args.get('limit', type=int) or 10
-    offset = request.args.get('offset', type=int) or 0
-    news_query = Articles.query.order_by(desc(Articles.publishedTime)).limit(num_articles).offset(offset).all()
-    #news_query = Articles.query.all()
-    feed_entries_json = [
-        {"headline": entry.title,
-        "source": entry.source,
-        "time": entry.publishedTime,
-        "icon": entry.bannerImageURL,
-        "logo": entry.bannerImageURL,
-        "company": entry.tickerID,
-        "id": entry.id,
-        'summary': entry.summary,
-        'sentiment': entry.overallSentiment,
-        "url": entry.url
-        }
-        for entry in news_query
-    ]
-    return jsonify(feed_entries_json)
-    '''
 
 @app.route('/fetchgainer')
 def fetchgainer():
@@ -782,6 +865,8 @@ def login():
     data = request.json
     email = data.get('username')
     passwd = data.get('password')
+    email = custom_sanitizer(email)
+    passwd = custom_sanitizer(passwd)
     users = Users.query.filter_by(email=email).first()
     useractivated = users.isactivated
     if users == None:
@@ -874,9 +959,11 @@ def submitsignup():
 
     data = request.json
     usernm = data.get('email')
+    usernm = custom_sanitizer(usernm)
     passwd = data.get('password')
     hashed_pwd = generate_password_hash(passwd)
     passwordre = data.get('confirmPassword')
+    passwordre = custom_sanitizer(passwordre)
     token = srializer.dumps(usernm, salt='email-confirm')
     
     users = Users.query.filter_by(email=usernm).first()
