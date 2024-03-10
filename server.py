@@ -5,7 +5,7 @@ app.secret_key = 'incredibly secret key of ours'
 from datetime import datetime, timedelta, date
 from werkzeug import security
 from markupsafe import escape
-from sqlalchemy import and_, or_, not_, func, desc, asc, distinct
+from sqlalchemy import and_, or_, not_, func, desc, asc, distinct, extract
 from flask_mail import Mail, Message
 import re #for the signup page
 from itsdangerous import URLSafeTimedSerializer
@@ -15,11 +15,13 @@ import yagmail
 from schema import db, dbinit, Users, get_current_stock_price_and_volume, CurrentStockPrice, get_company_overview, FinancialData, getTopGainersLosers, TopGainers, TopLosers, ActivelyTraded, split_primary_exchanges, get_global_market, GlobalMarket, fillUpNews, Articles, ArticleTickers, UserCompany, SavedArticles, Company
 from flask_sqlalchemy import SQLAlchemy
 from apscheduler.schedulers.background import BackgroundScheduler
+import logging
 srializer = URLSafeTimedSerializer('xyz567')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24) 
 import pandas as pd
+import requests
 import signal
 import sys
 import json
@@ -29,12 +31,14 @@ db.init_app(app)
 
 
 
-resetwholedb = False
+resetwholedb = True
 if resetwholedb:
     with app.app_context():
-        db.drop_all()
+        '''db.drop_all()
         db.create_all()
-        dbinit()
+        dbinit()'''
+        db.metadata.drop_all(bind=db.engine, tables=[Users.__table__])
+        db.metadata.create_all(bind=db.engine, tables=[Users.__table__])
 
 
 
@@ -49,6 +53,43 @@ yag = yagmail.SMTP(gmail_user, gmail_password, host="smtp.gmail.com")
 
 companies = pd.read_csv('SP_500.csv')
 tickers = companies['Symbol'].unique()
+
+
+def format_news_feed_data(data):
+    articles = []
+    for item in data.get('feed', []):
+        try:
+            publishedTime = datetime.strptime(item.get('time_published'), "%Y%m%dT%H%M%S")
+        except ValueError:
+            publishedTime = 'N/A'  # Handle incorrect format gracefully
+        
+        # Prepare ticker sentiment details if any
+        ticker_sentiments = []
+        for ticker_detail in item.get('ticker_sentiment', []):
+            ticker_sentiment = {
+                "ticker": ticker_detail.get('ticker', 'N/A'),
+                "relevanceScore": ticker_detail.get('relevance_score', 'N/A'),
+                "sentimentScore": ticker_detail.get('ticker_sentiment_score', 'N/A'),
+                "sentimentLabel": ticker_detail.get('ticker_sentiment_label', 'N/A')
+            }
+            ticker_sentiments.append(ticker_sentiment)
+        
+            article = {
+                "tickerID": ticker_detail.get('ticker', 'N/A'), 
+                "title": item.get('title', 'N/A'),
+                "url": item.get('url', 'N/A'),
+                "publishedTime": publishedTime,
+                "authors": item.get('authors', []),
+                "summary": item.get('summary', 'N/A'),
+                "bannerImageURL": item.get('banner_image', 'N/A'),
+                "source": item.get('source', 'N/A'),
+                "category": item.get('category_within_source', 'N/A'),
+                "sourceDomain": item.get('source_domain', 'N/A'),
+                "overallSentiment": item.get('overall_sentiment_label', 'N/A'),
+                "tickerSentiments": ticker_sentiments
+            }
+            articles.append(article)
+    return articles
 
 
 def dailyUpdates():
@@ -204,11 +245,75 @@ def frequentUpdates():
                     percent_float = float(active["change_percentage"].rstrip('%'))
                     db.session.add(ActivelyTraded(active["ticker"], active["price"], active["change_amount"], percent_float, active["volume"]))
                     db.session.commit()
+
+def newsUpdates():
+    with app.app_context():
+        companies = pd.read_csv('SP_500.csv')
+        SPTickers = companies['Symbol'].unique()
+        current_datetime = datetime.now()
+        time_from = current_datetime - timedelta(minutes=30)
+        formatted_time_from = time_from.strftime("%Y%m%dT%H%M")
+        url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&time_from={formatted_time_from}&sort=RELEVANCE&limit=10&apikey=QC6PHJMTIZHC8S6B"
+        #print(url)
+        try:
+            response = requests.get(url)
+            response.raise_for_status()  # This will raise an exception for HTTP errors
+            data = response.json()
+            news_items = format_news_feed_data(data)
+            if news_items:
+                #if it contains data
+                for newsEntry in news_items:
+                    #for every news article
+                    if newsEntry:
+                        if newsEntry["tickerID"] in SPTickers:
+                            whetherExistsQuery = Articles.query.filter_by(title=newsEntry["title"], tickerID=newsEntry["tickerID"]).all()
+                            if len(whetherExistsQuery) == 0:
+                                authorArr = newsEntry["authors"]
+                                authorString = ', '.join(authorArr)
+                                news = Articles(newsEntry["tickerID"], newsEntry["title"], newsEntry["url"], newsEntry["publishedTime"], authorString, newsEntry["summary"], newsEntry["bannerImageURL"], newsEntry["source"], newsEntry["category"], newsEntry["sourceDomain"], newsEntry["overallSentiment"])
+                                db.session.add(news)
+                                db.session.flush() #retrieving the current article's ID so we can have multiple sentiments for the current articleID in the ArticleTickers table
+                                news_id = news.id
+                                print("Added for ticker "+str(newsEntry["tickerID"])+" title: "+newsEntry["title"])
+                                for sentiment in newsEntry["tickerSentiments"]:
+                                    if sentiment:
+                                        sentiments = ArticleTickers(news_id, sentiment["ticker"], sentiment["relevanceScore"], sentiment["sentimentScore"])
+                                        db.session.add(sentiments)
+                            else:
+                                print("------------IGNORING--------- Already in DB for ticker "+str(newsEntry["tickerID"])+" TITLE: "+newsEntry["title"])
+            else:
+                print("EMPTY - NO NEW ARTICLES - DATE AND TIME IS "+str(datetime.now()))
+            db.session.commit()
+        except requests.exceptions.HTTPError as errh:
+            logging.error("Http Error: %s", errh)
+        except requests.exceptions.ConnectionError as errc:
+            logging.error("Error Connecting: %s", errc)
+        except requests.exceptions.Timeout as errt:
+            logging.error("Timeout Error: %s", errt)
+        except requests.exceptions.RequestException as err:
+            logging.error("Other Error: %s", err)
+
+def oldNewsDeletion():
+    with app.app_context():
+        savedArticlesQuery = SavedArticles.query.distinct(SavedArticles.id).all()
+        savedArticleIDs = [sa.id for sa in savedArticlesQuery]
+        five_days_ago = datetime.now() - timedelta(days=5)
+        five_days_ago_day = five_days_ago.day
+        items_five_days_ago = Articles.query.filter((extract('day', Articles.publishedTime) == five_days_ago_day) & not_(Articles.id.in_(savedArticleIDs))).delete()
+        if items_five_days_ago > 0:
+            print("DELETED OLD NON-SAVED ARTICLES")
+        else:
+            print("NO NON-SAVED ARTICLES FROM 5 DAYS AGO")
+        db.session.commit()
+
+
     
 scheduler = BackgroundScheduler()
 scheduler.start()
 scheduler.add_job(frequentUpdates, 'interval', minutes=5)
+scheduler.add_job(newsUpdates, 'interval', minutes=30)
 scheduler.add_job(dailyUpdates, 'interval', hours=24)
+scheduler.add_job(oldNewsDeletion, 'interval', hours=24)
 
 
 def custom_sanitizer(input_from_html):
@@ -599,6 +704,8 @@ def searchCompany():
         }
         for entry in companies
     ]
+
+    
     return (jsonify(companyList))
 
 @app.route('/searchHeadline', methods=["POST"])
@@ -607,7 +714,7 @@ def searchHeadline():
     stringd = data.get("string")
     string = stringd.lower()
     string = custom_sanitizer(string)
-    articles = Articles.query.filter(func.lower(Articles.title).contains(string)).order_by(desc(Articles.publishedTime)).limit(15).all()
+    articles = Articles.query.filter(func.lower(Articles.title).contains(string)).order_by(desc(Articles.publishedTime)).limit(20).all()
     if len(articles) == 0:
         return (jsonify({"message": "empty"}))
     for elem in articles:
@@ -626,7 +733,43 @@ def searchHeadline():
         }
         for entry in articles
     ]
-    return (jsonify(articleList))
+
+    merged_entries = {}
+    for entry in articles:
+        article_key = (entry.title)
+        if article_key in merged_entries or entry.id in merged_entries:
+            # If the article key exists, append the ticker
+            merged_entries[article_key]['ticker'].append(entry.tickerID)
+        else:
+            if entry.bannerImageURL is not None or entry.bannerImageURL == "":
+                merged_entries[article_key] = {
+                    "id": entry.id,
+                    "ticker": [entry.tickerID],
+                    "title": entry.title,
+                    "url": entry.url,
+                    "source": entry.source,
+                    "summary": entry.summary,
+                    "image": entry.bannerImageURL,
+                    "sentiment": entry.overallSentiment,
+                    "time": entry.publishedTime
+                }
+            else:
+                print("IMAGE FOR ENTRY ID: "+str(entry.id)+" IS NONEXISTENT. PLACING UNIQUE IMAGE")
+                merged_entries[article_key] = {
+                    "id": entry.id,
+                    "ticker": [entry.tickerID],
+                    "title": entry.title,
+                    "url": entry.url,
+                    "source": entry.source,
+                    "summary": entry.summary,
+                    "image": "https://cdn.pixabay.com/photo/2013/07/12/19/16/newspaper-154444_960_720.png",
+                    "sentiment": entry.overallSentiment,
+                    "time": entry.publishedTime
+                }
+    #print("MERGED ENTRIES AFTER OFFSET "+str(offset)+" IS "+str(merged_entries))
+    feed_entries_json = list(merged_entries.values())
+    return jsonify(feed_entries_json)
+    #return (jsonify(articleList))
 
 
 
@@ -741,22 +884,20 @@ def discover():
                     sectorQueryArticles = Articles.query.order_by(desc(Articles.publishedTime)).offset(0).all()
                 else:
                     sectorQueryArticles = Articles.query.order_by(asc(Articles.publishedTime)).offset(0).all()
+            else:
+                if publishDate == 1:
+                    sectorQueryArticles = Articles.query.filter(Articles.category.in_(categorylist)).order_by(desc(Articles.publishedTime)).offset(0).all()
+                else:
+                    sectorQueryArticles = Articles.query.filter(Articles.category.in_(categorylist)).order_by(asc(Articles.publishedTime)).offset(0).all()
+        else:
+            if categorylist == []:
+                if publishDate == 1:
+                    sectorQueryArticles = Articles.query.filter(Articles.tickerID.in_(tickerIDForSector)).order_by(desc(Articles.publishedTime)).offset(0).all()
+                else:
+                    sectorQueryArticles = Articles.query.filter(Articles.tickerID.in_(tickerIDForSector)).order_by(asc(Articles.publishedTime)).offset(0).all()
 
-        yolo = [ 
-            {   "headline": entry.title,
-                "source": entry.source,
-                "time": entry.publishedTime,
-                "icon": entry.bannerImageURL,
-                "logo": entry.bannerImageURL,
-                "company": [entry.tickerID],
-                "id": entry.id,
-                'summary': entry.summary,
-                'sentiment': entry.overallSentiment,
-                "url": entry.url
-            }
-            for entry in sectorQueryArticles
-        ]
-            
+
+
         merged_entries = {}
         for entry in sectorQueryArticles:
             article_key = (entry.title)
@@ -939,55 +1080,6 @@ def retrieveCompany():
 @app.route('/submitlogin', methods=['POST', 'GET'])
 def login():
     
-    '''if request.method == 'POST':
-        email = request.form.get("email")
-        email = escape(email)
-        passwd = request.form.get("password")
-        passwd = escape(passwd)
-        session["username"] = email
-        users = Users.query.filter_by(email=email).first()
-        if users == None:
-            
-            try:
-              del session['username']
-            except KeyError:
-                pass
-            session.pop('username', None)
-            session.clear()
-
-            return "Incorrect email. Try again!"
-        useractivated = users.isactivated
-        if not security.check_password_hash(users.hashed_password, passwd): 
-            try:
-              del session['username']
-            except KeyError:
-                pass
-            session.pop('username', None)
-            session.clear()
-            return "Incorrect password. Try again!"
-        else:
-            if useractivated == 0:
-              token = srializer.dumps(email, salt='email-confirm')
-              link = url_for('confirmemail', token=token, external=True)
-              urlbeginning = request.base_url
-              urlnew = urlbeginning+link
-              urlnew = urlnew.replace("/submitlogin", "")
-              #print("URL to receive by person signing up is: "+urlnew)
-              msgbody = 'Your new verification link is {}'.format(urlnew)
-              message = f"Subject: Email verification\n\n{msgbody}"
-              yag.send(to=email, contents=[message])
-              users.temptoken = token
-              db.session.commit()
-
-              try:
-                del session['username']
-              except KeyError:
-                pass
-              session.pop('username', None)
-              session.clear()
-              return '<p>Your account is not activated. Another email was sent to you to verify your address</p><br /><p>The email you entered is {}<br /><p>Activate your account in an hour. If you cant, you can receive a new confirmation email on a login attempt</p><br /><form action="/login"><input type="submit" value="Return"></form>'.format(email)
-            elif useractivated == 1:
-              return redirect('/')'''
     data = request.json
     email = data.get('username')
     passwd = data.get('password')
@@ -1001,17 +1093,6 @@ def login():
         response_message = 'deny'
     else:
         if useractivated == 0:
-            '''token = srializer.dumps(email, salt='email-confirm')
-            link = url_for('confirmemail', token=token, external=True)
-            urlbeginning = request.base_url
-            urlnew = urlbeginning+link
-            urlnew = urlnew.replace("/submitlogin", "")
-            #print("URL to receive by person signing up is: "+urlnew)
-            msgbody = 'Your new verification link is {}'.format(urlnew)
-            message = f"Subject: Email verification\n\n{msgbody}"
-            yag.send(to=email, contents=[message])
-            users.temptoken = token
-            db.session.commit()'''
             response_message = 'deny'
         else:
             response_message = 'accept'
@@ -1033,55 +1114,6 @@ def logout():
 
 @app.route('/submitsignup', methods=['POST', 'GET'])
 def submitsignup():
-    
-
-    
-    '''usernm = request.form.get("email")
-    usernm = escape(usernm)
-    passwd = request.form.get("password")
-    passwd = escape(passwd)
-    hashed_pwd = generate_password_hash(passwd)
-    passwordre = request.form.get("repeated")
-    passwordre = escape(passwordre)
-    token = srializer.dumps(usernm, salt='email-confirm')
-    users = Users.query.filter_by(email=usernm).first()
-
-    regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
-    def check(usernm):
-        if(re.fullmatch(regex, usernm)):
-            return True
-        else:
-            return False
-    
-    check(usernm)
-
-    if request.method == 'POST':
-        if check(usernm):
-            if users == None:
-                if passwd == passwordre:
-                    all_users = [
-                        Users(usernm,hashed_pwd,token, 0), 
-                    ]
-                    db.session.add_all(all_users)
-                    db.session.commit()
-                    link = url_for('confirmemail', token=token, external=True)
-                    urlbeginning = request.base_url
-                    urlnew = urlbeginning+link
-                    urlnew = urlnew.replace("/submitsignup", "")
-                    #print("URL to receive by person signing up is: "+urlnew)
-                    msgbody = 'Your verification link is {}'.format(urlnew)
-                    message = f"Subject: Email verification\n\n{msgbody}"
-                    yag.send(to=usernm, contents=[message])
-
-                    return '<div align="center"><p>The email you entered is {}. </p><p>Activate your account in an hour. If you cant, you can receive a new confirmation email on a login attempt.</p><form action="/login"><input type="submit" value="Return"></form></div>'.format(usernm)
-                else:
-                    return "Passwords should match. Try again!"
-            else:
-                return "User already exists! Please choose a different username!"
-        else:
-            return "Invalid email format. Try again!"'''
-        
-
 
     data = request.json
     usernm = data.get('email')
@@ -1111,14 +1143,6 @@ def submitsignup():
                     ]
                     db.session.add_all(all_users)
                     db.session.commit()
-                    '''link = url_for('confirmemail', token=token, external=True)
-                    urlbeginning = request.base_url
-                    urlnew = urlbeginning+link
-                    urlnew = urlnew.replace("/submitsignup", "")
-                    #print("URL to receive by person signing up is: "+urlnew)
-                    msgbody = 'Your verification link is {}'.format(urlnew)
-                    message = f"Subject: Email verification\n\n{msgbody}"
-                    yag.send(to=usernm, contents=[message])'''
                     response_message = 'accept'
                 else:
                     response_message = 'deny'
